@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S4 · Cronograma y Asignación de Auditorios — Concurso 2026</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="representante.css">
+  <link rel="stylesheet" href="cronograma.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR DE NAVEGACIÓN -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo" style="background: linear-gradient(135deg, #2563eb, #0891b2);">S4</div>
+      <div>
+        Cronograma y Asignación de Auditorios
+        <small>Concurso de Cuartetos de Cuerda · HU-10 / HU-11 / HU-12 · RF-25 a RF-30</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <a href="index.html" class="btn btn-secondary">📝 S2 · Inscripción</a>
+      <a href="representante.html" class="btn btn-ghost">👤 Portal Representante</a>
+      <button class="btn btn-ghost" id="btnRestablecer" title="Restablecer datos predeterminados">🔄 Reset</button>
+    </div>
+  </header>
+  
+
+  <!-- ESTADÍSTICAS RÁPIDAS (KPIs) -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px;">
+    <div class="card" style="padding: 16px; text-align: center; margin-bottom: 0;">
+      <div style="font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700;">Cuartetos Registrados</div>
+      <div id="statTotalCuartetos" style="font-size: 26px; font-weight: 800; color: var(--ink); margin-top: 4px;">4</div>
+    </div>
+    <div class="card" style="padding: 16px; text-align: center; margin-bottom: 0;">
+      <div style="font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700;">Cuartetos Programados</div>
+      <div id="statProgramados" style="font-size: 26px; font-weight: 800; color: var(--primary); margin-top: 4px;">2/4</div>
+    </div>
+    <div class="card" style="padding: 16px; text-align: center; margin-bottom: 0;">
+      <div style="font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700;">Auditorios Habilitados</div>
+      <div id="statTotalAuditorios" style="font-size: 26px; font-weight: 800; color: var(--success); margin-top: 4px;">4</div>
+    </div>
+    <div class="card" style="padding: 16px; text-align: center; margin-bottom: 0;">
+      <div style="font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700;">Turnos Asignados Activos</div>
+      <div id="statTurnosTotales" style="font-size: 26px; font-weight: 800; color: var(--danger); margin-top: 4px;">2</div>
+    </div>
+  </div>
+
+  <!-- PANEL 1: MONITOR DE DISPONIBILIDAD DE AUDITORIOS EN TIEMPO REAL -->
+  <section class="card">
+    <div class="ficha-header">
+      <div>
+        <h2>🏛️ Monitor de Auditorios y Turnos Asignados</h2>
+        <p class="subtitle" style="margin-bottom: 0;">
+          Consulta los turnos programados en cada sala. Puedes hacer clic en "Ver y Escoger Horarios" para abrir la agenda de cualquier auditorio.
+        </p>
+      </div>
+    </div>
+
+    <div class="auditorios-grid" id="auditoriosGrid" style="margin-top: 18px;">
+      <!-- Generado dinámicamente por cronograma.js -->
+    </div>
+  </section>
+
+  <!-- PANEL 2: FORMULARIO INTUITIVO (AUDITORIO -> FECHA -> HORARIOS DISPONIBLES -> CUARTETO) -->
+  <section class="card" id="formProgramarCard">
+    <div class="ficha-header">
+      <div>
+        <h2>➕ Programar Turno: Selección por Auditorio y Horario Disponible</h2>
+        <p class="subtitle" style="margin-bottom: 0;">
+          HU-10 · CA1 · RF-25 · Escoge primero el auditorio y la fecha para visualizar en tiempo real qué horarios están libres y cuáles ya están ocupados.
+        </p>
+      </div>
+    </div>
+
+    <!-- Indicador de pasos del flujo -->
+    <div class="flujo-pasos" style="margin-top: 18px;">
+      <div class="paso-badge active"><span class="num">1</span> Auditorio</div>
+      <div class="paso-badge active"><span class="num">2</span> Fecha</div>
+      <div class="paso-badge active"><span class="num">3</span> Horario Disponible</div>
+      <div class="paso-badge active"><span class="num">4</span> Cuarteto</div>
+    </div>
+
+    <!-- Alerta dinámica cuando el cuarteto ya tiene auditorio asignado -->
+    <div id="alertCuartetoEstado" style="display: none; margin-bottom: 16px;"></div>
+
+    <form id="formProgramar">
+      <!-- Fila 1: Auditorio y Fecha -->
+      <div class="programar-grid">
+        <div class="form-row">
+          <label>1. Auditorio a Programar <span class="req">*</span></label>
+          <select id="selectAuditorio" required>
+            <!-- Llenado dinámicamente -->
+          </select>
+          <div class="hint">Selecciona la sala de concierto donde se evaluará la presentación.</div>
+        </div>
+
+        <div class="form-row">
+          <label>2. Fecha de Presentación <span class="req">*</span></label>
+          <input type="date" id="inputFecha" value="2026-10-15" required>
+          <div class="hint">Al cambiar la fecha o auditorio, se actualizan los horarios libres abajo.</div>
+        </div>
+
+        <div class="form-row">
+          <label>Fase de la Competencia <span class="req">*</span></label>
+          <select id="selectFase">
+            <option value="Primera Eliminatoria">Primera Eliminatoria (0 antecedentes)</option>
+            <option value="Segunda Eliminatoria">Segunda Eliminatoria (con antecedentes)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Información del auditorio seleccionado -->
+      <div id="infoAuditorioSeleccionado" style="margin-bottom: 14px;"></div>
+
+      <!-- Fila 2: Grilla Interactiva de Horarios Disponibles -->
+      <div class="slots-container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label style="font-size: 13px; font-weight: 700; color: var(--ink);">
+            3. Horarios del Auditorio para esta fecha <span class="req">*</span> (Haz clic en un horario libre)
+          </label>
+          <span id="slotsDisponiblesCount" style="font-size: 12px; font-weight: 700; color: var(--primary);"></span>
+        </div>
+
+        <div class="slots-grid" id="slotsGrid">
+          <!-- Generado dinámicamente: slots verdes libres / slots rojos ocupados -->
+        </div>
+        <div class="hint" style="margin-top: 6px;">
+          🔒 Los horarios ocupados muestran el nombre del cuarteto que ya los reservó y no pueden ser seleccionados.
+        </div>
+      </div>
+
+      <!-- Fila 3: Selección de Cuarteto Participante -->
+      <div class="programar-grid">
+        <div class="form-row" style="grid-column: 1 / -1;">
+          <label>4. Cuarteto Participante a Asignar <span class="req">*</span></label>
+          <select id="selectCuarteto" required>
+            <!-- Llenado dinámicamente -->
+          </select>
+          <div class="hint">Solo cuartetos validados sin auditorio previo en esta fase pueden recibir un nuevo turno.</div>
+        </div>
+      </div>
+
+      <!-- Caja de Resumen antes de Guardar -->
+      <div id="resumenTurnoBox" class="resumen-turno-box" style="display: none;">
+        <div id="resumenTurnoInfo" class="resumen-turno-info"></div>
+      </div>
+
+      <div class="actions" style="margin-top: 18px;">
+        <button type="button" class="btn btn-secondary" id="btnSimularConflicto" style="color: #b91c1c; border-color: #fca5a5;">
+          ⚠️ Probar Error: Forzar Conflicto de Horario (RNF-15)
+        </button>
+        <button type="submit" class="btn btn-primary" id="btnProgramar" disabled>
+          📅 Confirmar y Guardar Turno en Auditorio →
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- PANEL 3: CRONOGRAMA OFICIAL CONECTADO CON JURADOS -->
+  <section class="card">
+    <div class="ficha-header">
+      <div>
+        <h2>📅 Cronograma Oficial de Presentaciones</h2>
+        <p class="subtitle" style="margin-bottom: 0;">
+          HU-10 · RF-25/26/27 · Terna de Jurados por Auditorio (RF-33)
+        </p>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Cuarteto</th>
+            <th>Auditorio Asignado</th>
+            <th>Terna de Jurados (RF-33)</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="cronogramaTableBody">
+          <!-- Llenado dinámicamente -->
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top: 14px; font-size: 12px; color: var(--muted); display: flex; gap: 20px; flex-wrap: wrap;">
+      <span>🔒 <strong>RNF-15:</strong> Bloqueo estricto de doble asignación de auditorio en bloques superpuestos.</span>
+      <span>⚖️ <strong>RF-34:</strong> Ningún jurado de la terna es profesor responsable del cuarteto evaluado.</span>
+    </div>
+  </section>
+
+</div>
+
+<!-- ============================================================
+     MODALES INTERACTIVOS (WIREFRAME DE MEDIA FIDELIDAD)
+     ============================================================ -->
+
+<!-- MODAL 1: TURNO PROGRAMADO EXITOSAMENTE (HU-10 · CA3 · RF-27 · Diapositiva 40) -->
+<div id="modalTurnoProgramado" class="modal-backdrop" style="display: none;">
+  <div class="modal-box">
+    <div class="modal-header" style="background: var(--success-soft);">
+      <h3 style="color: #14532d; display: flex; align-items: center; gap: 8px;">
+        ✅ [OK] Turno Programado Exitosamente
+      </h3>
+      <button class="modal-close" onclick="cerrarModal('modalTurnoProgramado')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info" style="margin-bottom: 16px;">
+        <div>
+          <strong>✉️ Notificación Oficial Enviada (RF-27)</strong>
+          Se ha enviado el correo electrónico de citación formal al representante del cuarteto y a su profesor responsable.
+        </div>
+      </div>
+      <div id="tpDetalle" style="background:#f8fafc; padding:16px; border-radius:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="cerrarModal('modalTurnoProgramado')">Entendido · Volver al Cronograma</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 2: ERROR DE CONFLICTO DE HORARIO Y AUDITORIO (HU-10 · CA2 · RF-26 · RNF-15 · Diapositiva 41) -->
+<div id="modalConflicto" class="modal-backdrop" style="display: none;">
+  <div class="modal-box" style="border: 2px solid var(--danger);">
+    <div class="modal-header" style="background: var(--danger-soft);">
+      <h3 style="color: var(--danger); display: flex; align-items: center; gap: 8px;">
+        🚫 [!] Error: Conflicto de Asignación de Auditorio y Horario
+      </h3>
+      <button class="modal-close" onclick="cerrarModal('modalConflicto')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-danger" style="margin-bottom: 16px;">
+        <div>
+          <strong>Existe un conflicto de horario y auditorio con otro cuarteto</strong>
+        </div>
+      </div>
+      <div id="conflictoDetalle" style="font-size: 14px; line-height: 1.6;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modalConflicto')">Volver al Cronograma</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 3: CITACIÓN OFICIAL DEL CUARTETO (HU-11 · RF-28 · RNF-16 · Diapositiva 42) -->
+<div id="modalCitacion" class="modal-backdrop" style="display: none;">
+  <div class="modal-box" style="max-width: 600px; padding: 0; background: transparent; box-shadow: none;">
+    <div class="citacion-card">
+      <div class="citacion-header">
+        <h2>CITACIÓN OFICIAL</h2>
+        <span class="codigo" id="citacionCodigo">CQ-2026-0147</span>
+        <div style="font-size: 20px; font-weight: 800; margin-top: 10px;" id="citacionCuartetoNombre">Harmonia String Quartet</div>
+      </div>
+
+      <div class="citacion-grid">
+        <div class="citacion-item">
+          <div class="label">📅 Fecha</div>
+          <div class="value" id="citacionFecha">15/10/2026</div>
+        </div>
+        <div class="citacion-item">
+          <div class="label">⏰ Hora</div>
+          <div class="value" id="citacionHora">10:00 AM</div>
+        </div>
+        <div class="citacion-item">
+          <div class="label">📍 Sede</div>
+          <div class="value" id="citacionSede">Sede Central</div>
+        </div>
+        <div class="citacion-item" style="border: 2px solid #93c5fd; background: rgba(59, 130, 246, 0.3);">
+          <div class="label">🏛️ Auditorio Asignado</div>
+          <div class="value" id="citacionAuditorio" style="color: #fef08a;">Auditorio Principal (ÚNICO)</div>
+        </div>
+        <div class="citacion-item">
+          <div class="label">🔢 Orden de Turno</div>
+          <div class="value" id="citacionOrden">#1</div>
+        </div>
+        <div class="citacion-item">
+          <div class="label">🎻 Obras a Interpretar</div>
+          <div class="value" id="citacionObras" style="font-size: 13px; font-weight: 500;">Ravel + Borodin</div>
+        </div>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px;">
+        👨‍⚖️ <strong>Terna de Jurados Evaluadores:</strong> <span id="citacionJurados"></span>
+      </div>
+
+      <div class="citacion-footer">
+        ⚠️ <strong>RNF-16:</strong> Presentarse obligatoriamente 15 minutos antes con los 4 integrantes y cédula institucional.
+        <div style="margin-top: 14px;">
+          <button class="btn btn-secondary" onclick="cerrarModal('modalCitacion')" style="background:#fff; color:#1e3a8a;">
+            Cerrar Citación
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 4: REPROGRAMAR TURNO (HU-12 · RF-29/30 · RNF-17 · Diapositiva 43) -->
+<div id="modalReprogramar" class="modal-backdrop" style="display: none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>🔄 Reprogramar Turno de Cuarteto</h3>
+      <button class="modal-close" onclick="cerrarModal('modalReprogramar')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info">
+        <div>
+          Cuarteto: <strong id="reprogCuarteto"></strong><br>
+          Turno actual: <span id="reprogTurnoActual"></span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>Auditorio *</label>
+        <select id="reprogNuevoAuditorio" required></select>
+      </div>
+
+      <div class="form-row">
+        <label>Nueva Fecha *</label>
+        <input type="date" id="reprogNuevaFecha" required>
+      </div>
+
+      <div class="form-row">
+        <label>Nuevo Horario Disponible *</label>
+        <select id="reprogNuevaHora" required></select>
+        <div class="hint">Al cambiar de turno, el anterior queda disponible de inmediato para otros cuartetos.</div>
+      </div>
+
+      <div class="form-row">
+        <label>Motivo de la Reprogramación <span class="req">*</span> (RNF-17)</label>
+        <textarea id="reprogMotivo" rows="3" placeholder="Ej: Solicitud formal del cuarteto por cruce con compromiso académico oficial..." required></textarea>
+        <div class="hint">Obligatorio. Se registrará trazabilidad completa con usuario, fecha y hora.</div>
+      </div>
+
+      <div class="trazabilidad-box">
+        ℹ️ <strong>RNF-17:</strong> La acción quedará registrada bajo la firma administrativa <code>admin@conservatorio.edu.pe</code>.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modalReprogramar')">Cancelar</button>
+      <button class="btn btn-primary" onclick="ejecutarReprogramacion()">Guardar y Notificar (RF-30)</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 5: REPROGRAMACIÓN CONFIRMADA (HU-12 · CA3 · RF-30 · Diapositiva 44) -->
+<div id="modalReprogramadoExitoso" class="modal-backdrop" style="display: none;">
+  <div class="modal-box">
+    <div class="modal-header" style="background: var(--success-soft);">
+      <h3 style="color: var(--success);">✅ [OK] Turno Reprogramado</h3>
+      <button class="modal-close" onclick="cerrarModal('modalReprogramadoExitoso')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="reprogExitoDetalle"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="cerrarModal('modalReprogramadoExitoso')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script src="cronograma.js"></script>
+</body>
+</html>

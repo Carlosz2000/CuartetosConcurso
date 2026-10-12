@@ -1,0 +1,281 @@
+/* ============================================================
+   PORTAL DEL REPRESENTANTE
+   ============================================================ */
+
+/* Tabs de navegación */
+.rep-tabs {
+  display: flex;
+  gap: 8px;
+  background: var(--surface);
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  padding: 10px 18px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* Estados de ficha */
+.estado-banner {
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.estado-banner.preinscripcion {
+  background: var(--primary-soft);
+  border-left: 4px solid var(--primary);
+}
+
+.estado-banner.observado {
+  background: var(--warn-soft);
+  border-left: 4px solid var(--warn);
+}
+
+.estado-banner.validado {
+  background: var(--success-soft);
+  border-left: 4px solid var(--success);
+}
+
+.estado-banner.rechazado,
+.estado-banner.retirado {
+  background: var(--danger-soft);
+  border-left: 4px solid var(--danger);
+}
+
+.estado-icon {
+  font-size: 32px;
+}
+
+.estado-info h3 {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.estado-info p {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Citación oficial */
+.citacion-card {
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  color: #fff;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(30, 58, 138, 0.3);
+}
+
+.citacion-header {
+  text-align: center;
+  border-bottom: 2px solid rgba(255,255,255,0.2);
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+}
+
+.citacion-header h2 {
+  font-size: 24px;
+  margin-bottom: 8px;
+  letter-spacing: 2px;
+}
+
+.citacion-header .codigo {
+  font-family: 'Courier New', monospace;
+  background: rgba(255,255,255,0.2);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.citacion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.citacion-item {
+  background: rgba(255,255,255,0.1);
+  padding: 16px;
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.citacion-item .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.citacion-item .value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.citacion-footer {
+  text-align: center;
+  padding-top: 16px;
+  border-top: 2px solid rgba(255,255,255,0.2);
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* Cronograma */
+.cronograma-timeline {
+  position: relative;
+  padding-left: 30px;
+}
+
+.cronograma-timeline::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--border);
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: 24px;
+  background: var(--surface);
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -26px;
+  top: 20px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 3px solid var(--primary-soft);
+}
+
+.timeline-item.completado::before {
+  background: var(--success);
+  border-color: var(--success-soft);
+}
+
+.timeline-item.pendiente::before {
+  background: var(--muted);
+  border-color: #e2e8f0;
+}
+
+.timeline-item .time {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.timeline-item .title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.timeline-item .details {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+/* Formulario de retiro */
+.retiro-form {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.retiro-warning {
+  background: var(--danger-soft);
+  border: 2px solid var(--danger);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.retiro-warning h3 {
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+/* Plazo de retiro */
+.plazo-info {
+  background: var(--primary-soft);
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.plazo-info .fecha-limite {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.plazo-info .fecha-actual {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .rep-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .tab-btn {
+    flex-shrink: 0;
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+  
+  .citacion-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .citacion-card {
+    padding: 20px;
+  }
+  
+  .citacion-header h2 {
+    font-size: 18px;
+  }
+}

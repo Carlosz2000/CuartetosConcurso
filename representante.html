@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal del Representante · Concurso Cuartetos 2026</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="representante.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER REPRESENTANTE -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">REP</div>
+      <div>
+        Portal del Representante
+        <small id="headerCodigo">Cuarteto: —</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <a href="cronograma.html" class="btn btn-primary" style="text-decoration:none;">📅 S4 · Cronograma y Auditorios</a>
+      <button class="btn btn-ghost" id="btnVolverInicio">📝 S2 · Inscripción</button>
+    </div>
+  </header>
+
+  <!-- NAVEGACIÓN POR TABS -->
+  <nav class="rep-tabs">
+    <button class="tab-btn active" data-tab="ficha">📋 Mi Ficha</button>
+    <button class="tab-btn" data-tab="cronograma">📅 Mi Cronograma</button>
+    <button class="tab-btn" data-tab="citacion">📜 Mi Citación</button>
+    <button class="tab-btn" data-tab="retiro">🚪 Retiro</button>
+  </nav>
+
+  <!-- CONTENIDO DINÁMICO -->
+  <main id="repContent"></main>
+
+</div>
+
+<script src="app.js"></script>
+<script src="representante.js"></script>
+</body>
+</html>

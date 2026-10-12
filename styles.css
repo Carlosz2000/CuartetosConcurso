@@ -1,0 +1,267 @@
+/* ============================================================
+   VARIABLES Y RESET
+   ============================================================ */
+:root{
+  --bg:#f4f6fb;
+  --surface:#ffffff;
+  --ink:#0f172a;
+  --muted:#64748b;
+  --primary:#2563eb;
+  --primary-dark:#1d4ed8;
+  --primary-soft:#dbeafe;
+  --success:#16a34a;
+  --success-soft:#dcfce7;
+  --warn:#d97706;
+  --warn-soft:#fef3c7;
+  --danger:#dc2626;
+  --danger-soft:#fee2e2;
+  --border:#e2e8f0;
+  --shadow:0 1px 3px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.04);
+  --radius:12px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  line-height:1.5;
+  min-height:100vh;
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.app{max-width:1200px;margin:0 auto;padding:24px}
+
+header.topbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:var(--surface);
+  padding:16px 24px;
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  margin-bottom:24px;
+}
+
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:18px}
+
+.brand-logo{
+  width:36px;height:36px;border-radius:8px;
+  background:linear-gradient(135deg,var(--primary),#7c3aed);
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;
+}
+
+.brand small{display:block;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.5px}
+
+.top-actions{display:flex;gap:8px}
+
+/* ============================================================
+   BOTONES
+   ============================================================ */
+.btn{
+  padding:10px 18px;border:none;border-radius:8px;
+  font-weight:600;font-size:14px;cursor:pointer;
+  transition:all .15s;display:inline-flex;align-items:center;gap:6px;
+  font-family:inherit;
+}
+
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--primary-dark)}
+.btn-secondary{background:#f1f5f9;color:var(--ink)}
+.btn-secondary:hover{background:#e2e8f0}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#b91c1c}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{background:#15803d}
+.btn-ghost{background:transparent;color:var(--muted)}
+.btn-ghost:hover{background:#f1f5f9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ============================================================
+   STEPPER
+   ============================================================ */
+.stepper{
+  display:flex;justify-content:space-between;
+  background:var(--surface);padding:20px 24px;
+  border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:20px;
+}
+
+.step{flex:1;text-align:center;position:relative;padding:0 12px}
+
+.step::before{
+  content:'';position:absolute;top:18px;left:50%;
+  width:100%;height:2px;background:var(--border);z-index:0;
+}
+
+.step:last-child::before{display:none}
+
+.step-num{
+  width:36px;height:36px;border-radius:50%;
+  background:var(--border);color:var(--muted);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-weight:700;position:relative;z-index:1;transition:all .2s;
+}
+
+.step.active .step-num{background:var(--primary);color:#fff}
+.step.done .step-num{background:var(--success);color:#fff}
+.step.done .step-num::after{content:'✓'}
+.step.done .step-num span{display:none}
+
+.step-label{display:block;margin-top:8px;font-size:12px;color:var(--muted);font-weight:500}
+.step.active .step-label{color:var(--primary);font-weight:700}
+.step.done .step-label{color:var(--success)}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+.card{
+  background:var(--surface);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:28px;margin-bottom:20px;
+}
+
+.card h2{font-size:20px;margin-bottom:6px}
+.card .subtitle{color:var(--muted);font-size:14px;margin-bottom:20px}
+
+.ficha-header{
+  display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;
+}
+
+/* ============================================================
+   FORMULARIOS
+   ============================================================ */
+.form-row{margin-bottom:18px}
+
+.form-row label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+.form-row label .req{color:var(--danger)}
+.form-row label .small-muted{font-weight:400;color:var(--muted);font-size:12px}
+
+.form-row input,
+.form-row select,
+.form-row textarea{
+  width:100%;padding:10px 12px;
+  border:1.5px solid var(--border);border-radius:8px;
+  font-size:14px;font-family:inherit;
+  transition:border-color .15s;background:#fff;
+}
+
+.form-row select{cursor:pointer}
+
+.form-row input:focus,
+.form-row select:focus,
+.form-row textarea:focus{outline:none;border-color:var(--primary)}
+
+.form-row input.invalid,
+.form-row select.invalid{border-color:var(--danger);background:var(--danger-soft)}
+
+.form-row .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.form-row .error{font-size:12px;color:var(--danger);margin-top:4px;font-weight:500}
+.form-row .ok{font-size:12px;color:var(--success);margin-top:4px;font-weight:500}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* ============================================================
+   INTEGRANTES
+   ============================================================ */
+.integrante-card{
+  background:#f8fafc;border:1.5px solid var(--border);
+  border-radius:10px;padding:16px;margin-bottom:12px;
+}
+
+.integrante-card h4{
+  font-size:14px;margin-bottom:12px;color:var(--primary);
+  display:flex;align-items:center;gap:8px;
+}
+
+.integrante-card h4 .chip{
+  background:var(--primary-soft);color:var(--primary);
+  padding:2px 8px;border-radius:12px;font-size:11px;
+}
+
+/* ============================================================
+   ALERTAS
+   ============================================================ */
+.alert{
+  padding:14px 18px;border-radius:10px;margin-bottom:16px;
+  display:flex;gap:12px;align-items:flex-start;font-size:14px;
+}
+
+.alert-success{background:var(--success-soft);color:#14532d;border-left:4px solid var(--success)}
+.alert-warn{background:var(--warn-soft);color:#78350f;border-left:4px solid var(--warn)}
+.alert-danger{background:var(--danger-soft);color:#7f1d1d;border-left:4px solid var(--danger)}
+.alert-info{background:var(--primary-soft);color:#1e3a8a;border-left:4px solid var(--primary)}
+.alert strong{display:block;margin-bottom:2px}
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+.badge{
+  display:inline-block;padding:4px 10px;border-radius:12px;
+  font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;
+}
+
+.badge-draft{background:#f1f5f9;color:#475569}
+.badge-obs{background:var(--warn-soft);color:var(--warn)}
+.badge-ok{background:var(--success-soft);color:var(--success)}
+.badge-rej{background:var(--danger-soft);color:var(--danger)}
+.badge-code{background:#0f172a;color:#fff;font-family:'Courier New',monospace;font-size:12px}
+
+/* ============================================================
+   ACCIONES Y DOCENTES
+   ============================================================ */
+.actions{
+  display:flex;justify-content:space-between;gap:12px;
+  margin-top:24px;padding-top:20px;border-top:1px solid var(--border);
+}
+
+.docente-sug{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+.docente-sug button{
+  padding:6px 12px;background:var(--primary-soft);color:var(--primary);
+  border:1px solid var(--primary);border-radius:16px;
+  font-size:12px;cursor:pointer;font-weight:600;font-family:inherit;
+}
+
+.docente-sug button:hover{background:var(--primary);color:#fff}
+
+.docente-info{background:#f8fafc;padding:14px;border-radius:8px;margin-top:12px;font-size:13px}
+.docente-info strong{color:var(--ink)}
+
+/* ============================================================
+   FICHA
+   ============================================================ */
+.ficha-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+
+.ficha-item{background:#f8fafc;padding:14px;border-radius:8px}
+.ficha-item .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.ficha-item .value{font-size:15px;font-weight:600;margin-top:4px}
+
+.estado-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+
+.estado-tabs button{
+  padding:8px 14px;border:1.5px solid var(--border);background:#fff;
+  border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;
+  color:var(--muted);font-family:inherit;
+}
+
+.estado-tabs button.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+/* ============================================================
+   UTILIDADES
+   ============================================================ */
+.hidden{display:none}
+.divider{height:1px;background:var(--border);margin:20px 0}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media(max-width:768px){
+  .grid-2,.ficha-grid{grid-template-columns:1fr}
+  .stepper{flex-direction:column;gap:12px}
+  .step::before{display:none}
+  .topbar{flex-direction:column;gap:12px}
+  .top-actions{width:100%;justify-content:center}
+}

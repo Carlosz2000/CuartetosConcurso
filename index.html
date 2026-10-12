@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S2 · Inscripción de Cuartetos — Concurso 2026</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">S2</div>
+      <div>
+        Inscripción de Cuartetos
+        <small>Concurso de Cuartetos de Cuerda · Octubre 2026</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="btn btn-ghost" id="btnReiniciar">🔄 Reiniciar</button>
+      <button class="btn btn-secondary" id="btnMiFicha">📋 Mi Ficha</button>
+      <a href="cronograma.html" class="btn btn-primary" style="text-decoration:none;">📅 S4 · Cronograma y Auditorios</a>
+      <a href="representante.html" class="btn btn-ghost" style="text-decoration:none;">👤 Portal Representante</a>
+    </div>
+  </header>
+
+  <!-- STEPPER -->
+  <div class="stepper" id="stepper">
+    <div class="step" data-step="1"><div class="step-num"><span>1</span></div><span class="step-label">Nombre</span></div>
+    <div class="step" data-step="2"><div class="step-num"><span>2</span></div><span class="step-label">Integrantes</span></div>
+    <div class="step" data-step="3"><div class="step-num"><span>3</span></div><span class="step-label">Profesor</span></div>
+    <div class="step" data-step="4"><div class="step-num"><span>4</span></div><span class="step-label">Repertorio</span></div>
+  </div>
+
+  <!-- VISTA 1: NOMBRE DEL CUARTETO -->
+  <section id="view-nombre" class="card">
+    <h2>Paso 1 · Nombre del Cuarteto</h2>
+    <p class="subtitle">HU-01 · RF-07/08 · RNF-05/06</p>
+
+    <div class="form-row">
+      <label>Nombre del Cuarteto <span class="req">*</span></label>
+      <input type="text" id="nombreCuarteto" placeholder="Ej: Harmonia String Quartet" maxlength="80">
+      <div id="nombreFeedback"></div>
+      <div class="hint">RNF-06: Validación de disponibilidad en &lt; 2s · RNF-05: Solo habilitado antes de la fecha límite</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" disabled>← Anterior</button>
+      <button class="btn btn-primary" id="btnGuardarNombre">Guardar y Continuar →</button>
+    </div>
+  </section>
+
+  <!-- VISTA 2: INTEGRANTES -->
+  <section id="view-integrantes" class="card hidden">
+    <h2>Paso 2 · Integrantes</h2>
+    <p class="subtitle">HU-02 · RF-09/10 · RNF-07/08 · Plantilla: 2 Violines · 1 Viola · 1 Violonchelo</p>
+
+    <div id="integrantesContainer"></div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="btnVolverIntegrantes">← Volver</button>
+      <button class="btn btn-primary" id="btnGuardarIntegrantes">Guardar y Continuar →</button>
+    </div>
+  </section>
+
+  <!-- VISTA 3: PROFESOR -->
+  <section id="view-profesor" class="card hidden">
+    <h2>Paso 3 · Profesor Responsable</h2>
+    <p class="subtitle">HU-03 · RF-11/12/13 · RNF-09 · El docente no puede ser Jurado</p>
+
+    <div class="form-row">
+      <label>Docente responsable <span class="req">*</span></label>
+      <input type="text" id="buscarDocente" placeholder="Buscar docente...">
+      <div class="docente-sug" id="sugerenciasDocentes"></div>
+      <div id="docenteInfo"></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="btnVolverProfesor">← Volver</button>
+      <button class="btn btn-primary" id="btnGuardarProfesor" disabled>Guardar y Continuar →</button>
+    </div>
+  </section>
+
+  <!-- VISTA 4: REPERTORIO -->
+  <section id="view-repertorio" class="card hidden">
+    <h2>Paso 4 · Repertorio</h2>
+    <p class="subtitle">HU-05 · RF-04/05/06 · Tabla unificada</p>
+
+    <div class="form-row">
+      <label>Obra Obligatoria <span class="req">*</span> <span class="small-muted">(RF-04 · desde catálogo institucional)</span></label>
+      <select id="obraObligatoria">
+        <option value="">-- Selecciona una obra del catálogo --</option>
+      </select>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="grid-2">
+      <div class="form-row">
+        <label>Obra Libre · Título <span class="req">*</span></label>
+        <input type="text" id="obraLibreTitulo" placeholder="Ej: Cuarteto No. 2">
+      </div>
+      <div class="form-row">
+        <label>Compositor <span class="req">*</span></label>
+        <input type="text" id="obraLibreCompositor" placeholder="Ej: Borodin, A.">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Duración estimada <span class="req">*</span></label>
+      <input type="text" id="obraLibreDuracion" placeholder="Ej: 7:15" style="max-width:200px">
+      <div class="hint">RF-05: Título, compositor y duración obligatorios</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="btnVolverRepertorio">← Volver</button>
+      <button class="btn btn-success" id="btnFinalizarInscripcion">✓ Finalizar Inscripción</button>
+    </div>
+  </section>
+
+  <!-- VISTA: FICHA -->
+  <section id="view-ficha" class="card hidden">
+    <div class="ficha-header">
+      <h2>Mi Ficha de Inscripción</h2>
+      <span class="badge badge-code" id="fichaCodigo">—</span>
+    </div>
+    <p class="subtitle">HU-08 · RF-21/22 · RNF-13</p>
+
+    <div class="estado-tabs">
+      <button class="active" data-estado="preinscripcion">Preinscripción</button>
+      <button data-estado="observado">Observado</button>
+      <button data-estado="validado">Validado</button>
+      <button data-estado="rechazado">Rechazado</button>
+      <button data-estado="retirado">Retirado</button>
+    </div>
+
+    <div id="fichaEstado"></div>
+
+    <div class="ficha-grid" id="fichaDetalle"></div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="btnVolverWizard">← Volver al wizard</button>
+      <div id="fichaActions"></div>
+    </div>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
