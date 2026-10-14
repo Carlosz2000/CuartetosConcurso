@@ -27,11 +27,11 @@ const CATALOGO_OBRAS = [
 ];
 
 const DOCENTES = [
-  { nombre:'Dra. Beatriz Morales', dni:'45678912', correo:'bmorales@conservatorio.edu.pe', especialidad:'Cámara', esJurado:false },
-  { nombre:'Dr. Luis Paredes', dni:'23456789', correo:'lparedes@conservatorio.edu.pe', especialidad:'Violín', esJurado:false },
-  { nombre:'Mg. Ana Torres', dni:'34567890', correo:'atorres@conservatorio.edu.pe', especialidad:'Viola', esJurado:false },
-  { nombre:'Dr. Carlos Mendoza', dni:'45678901', correo:'cmendoza@conservatorio.edu.pe', especialidad:'Vc', esJurado:true },
-  { nombre:'Dra. María Salazar', dni:'56789012', correo:'msalazar@conservatorio.edu.pe', especialidad:'Vc', esJurado:true }
+  { nombre:'Dra. Beatriz Morales', dni:'45678912', correo:'bmorales@cons.pe', especialidad:'Cámara', esJurado:false },
+  { nombre:'Dr. Luis Paredes', dni:'23456789', correo:'lparedes@cons.pe', especialidad:'Violín', esJurado:false },
+  { nombre:'Mg. Ana Torres', dni:'34567890', correo:'atorres@cons.pe', especialidad:'Viola', esJurado:false },
+  { nombre:'Dr. Carlos Mendoza', dni:'45678901', correo:'cmendoza@cons.pe', especialidad:'Vc', esJurado:true },
+  { nombre:'Dra. María Salazar', dni:'56789012', correo:'msalazar@cons.pe', especialidad:'Vc', esJurado:true }
 ];
 
 const CUARTETOS_REGISTRADOS = ['Arpeggio Quartet','Sinfonia String Quartet','Camerata Ensemble'];
@@ -208,7 +208,7 @@ function renderIntegrantes(){
             <label>Correo institucional <span class="req">*</span></label>
             <input type="email" data-i="${i}" data-f="correo" 
                    value="${integrantes[i].correo}" 
-                   placeholder="alumno@conservatorio.edu.pe">
+                   placeholder="alumno@cons.pe">
           </div>
           <div class="form-row" style="grid-column: 1 / -1;">
             <label>Instrumento <span class="req">*</span></label>
@@ -324,8 +324,8 @@ function guardarIntegrantes(){
     if(!it.correo){
       marcarError(i,'correo','Correo obligatorio');
       errores.push(`Integrante ${i+1}: correo vacío`);
-    } else if(!it.correo.endsWith('@conservatorio.edu.pe')){
-      marcarError(i,'correo','Debe ser @conservatorio.edu.pe');
+    } else if(!it.correo.endsWith('@cons.pe')){
+      marcarError(i,'correo','Debe ser @cons.pe');
       errores.push(`Integrante ${i+1}: correo institucional inválido`);
     }
     if(!it.instrumento){
