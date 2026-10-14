@@ -108,7 +108,7 @@ const PROGRAMACIONES_INICIALES = [
     terna: ['Dra. B. Morales', 'Dr. L. Paredes', 'Mg. A. Torres'],
     estado: 'Programado',
     obras: 'Cuarteto en Fa Mayor (Ravel) · Cuarteto No. 2 (Borodin)',
-    trazabilidad: 'Turno programado por admin@conservatorio.edu.pe · 01/10/2026 09:30'
+    trazabilidad: 'Turno programado por admin@cons.pe · 01/10/2026 09:30'
   },
   {
     id: 'prog-2',
@@ -124,7 +124,7 @@ const PROGRAMACIONES_INICIALES = [
     terna: ['Dr. C. Mendoza', 'Dra. M. Salazar', 'Mg. A. Torres'],
     estado: 'Programado',
     obras: 'Cuarteto Op.76 No.3 (Haydn) · Cuarteto No. 2 (Borodin)',
-    trazabilidad: 'Turno programado por admin@conservatorio.edu.pe · 01/10/2026 10:15'
+    trazabilidad: 'Turno programado por admin@cons.pe · 01/10/2026 10:15'
   }
 ];
 
@@ -640,7 +640,7 @@ function ejecutarProgramacionTurno() {
     terna: auditorio.terna,
     estado: 'Programado',
     obras: cuarteto.obras,
-    trazabilidad: `Programado por admin@conservatorio.edu.pe · ${new Date().toLocaleString('es-PE')}`
+    trazabilidad: `Programado por admin@cons.pe · ${new Date().toLocaleString('es-PE')}`
   };
 
   programaciones.push(nuevoTurno);
@@ -792,7 +792,7 @@ function ejecutarReprogramacion() {
   prog.auditorioNombre = nuevoAud.nombre;
   prog.sede = nuevoAud.sede;
   prog.terna = nuevoAud.terna;
-  prog.trazabilidad = `Reprogramado por admin@conservatorio.edu.pe el ${new Date().toLocaleString('es-PE')} · Motivo: ${motivo}`;
+  prog.trazabilidad = `Reprogramado por admin@cons.pe el ${new Date().toLocaleString('es-PE')} · Motivo: ${motivo}`;
 
   guardarDatos();
   cerrarTodosLosModales();
