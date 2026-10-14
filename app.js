@@ -1,3 +1,17 @@
+
+function getProgramacionCuartetoApp(codigo, nombre) {
+  try {
+    const progsGuardadas = localStorage.getItem('concurso_cuartetos_s4_programaciones');
+    if (progsGuardadas) {
+      const progs = JSON.parse(progsGuardadas);
+      return progs.find(p => 
+        (codigo && p.codigoCuarteto === codigo) || 
+        (nombre && p.cuartetoNombre && p.cuartetoNombre.toLowerCase().trim() === nombre.toLowerCase().trim())
+      ) || null;
+    }
+  } catch(e) {}
+  return null;
+}
 /* ============================================================
    ESTADO GLOBAL (Store)
    ============================================================ */
@@ -27,11 +41,16 @@ const CATALOGO_OBRAS = [
 ];
 
 const DOCENTES = [
-  { nombre:'Dra. Beatriz Morales', dni:'45678912', correo:'bmorales@cons.pe', especialidad:'Cámara', esJurado:false },
+  { nombre:'Dra. Beatriz Morales', dni:'45678912', correo:'bmorales@cons.pe', especialidad:'Música de Cámara', esJurado:false },
   { nombre:'Dr. Luis Paredes', dni:'23456789', correo:'lparedes@cons.pe', especialidad:'Violín', esJurado:false },
   { nombre:'Mg. Ana Torres', dni:'34567890', correo:'atorres@cons.pe', especialidad:'Viola', esJurado:false },
-  { nombre:'Dr. Carlos Mendoza', dni:'45678901', correo:'cmendoza@cons.pe', especialidad:'Vc', esJurado:true },
-  { nombre:'Dra. María Salazar', dni:'56789012', correo:'msalazar@cons.pe', especialidad:'Vc', esJurado:true }
+  { nombre:'Dr. Carlos Mendoza', dni:'45678901', correo:'cmendoza@cons.pe', especialidad:'Violonchelo', esJurado:true },
+  { nombre:'Dra. María Salazar', dni:'56789012', correo:'msalazar@cons.pe', especialidad:'Violonchelo', esJurado:true },
+  { nombre:'Mtro. Roberto Guimaray', dni:'67890123', correo:'rguimaray@cons.pe', especialidad:'Violín y Orquesta', esJurado:false },
+  { nombre:'Dra. Elena Bustamante', dni:'78901234', correo:'ebustamante@cons.pe', especialidad:'Viola y Música de Cámara', esJurado:false },
+  { nombre:'Mg. Javier Carpio', dni:'89012345', correo:'jcarpio@cons.pe', especialidad:'Contrabajo y Cuerdas', esJurado:false },
+  { nombre:'Dra. Lucía León', dni:'90123456', correo:'lleon@cons.pe', especialidad:'Violín Clásico', esJurado:false },
+  { nombre:'Dr. Fernando Alván', dni:'12345678', correo:'falvan@cons.pe', especialidad:'Dirección y Cámara', esJurado:true }
 ];
 
 const CUARTETOS_REGISTRADOS = ['Arpeggio Quartet','Sinfonia String Quartet','Camerata Ensemble'];
@@ -539,6 +558,8 @@ function renderFicha(){
     `;
   }
 
+  const progTurno = getProgramacionCuartetoApp(f.codigo, f.nombre);
+
   if(elDetalle){
     elDetalle.innerHTML = `
       <div class="ficha-item"><div class="label">Código</div><div class="value">${f.codigo||'—'}</div></div>
@@ -547,6 +568,12 @@ function renderFicha(){
       <div class="ficha-item"><div class="label">Profesor</div><div class="value">${f.profesor?.nombre||'—'}</div></div>
       <div class="ficha-item"><div class="label">Obra Obligatoria</div><div class="value">${f.repertorio.obligatoria?.titulo||'—'}</div></div>
       <div class="ficha-item"><div class="label">Obra Libre</div><div class="value">${f.repertorio.libre?.titulo||'—'}</div></div>
+      <div class="ficha-item" style="grid-column: 1 / -1; ${progTurno ? 'border: 1.5px solid #86efac; background: #f0fdf4;' : 'border: 1.5px dashed var(--warn); background: var(--warn-soft);'}">
+        <div class="label" style="font-weight:700; ${progTurno ? 'color:#15803d;' : 'color:var(--warn);'}">Auditorio y Horario Asignado</div>
+        <div class="value" style="font-size:14px; margin-top:4px;">
+          ${progTurno ? `🏛️ <strong>${progTurno.auditorioNombre}</strong> · 📅 ${progTurno.fecha} (${progTurno.hora}) · Turno #${progTurno.orden}` : `⏳ <em>Pendiente de selección</em> · <a href="cronograma.html" style="color:var(--primary); font-weight:700; text-decoration:underline;">Elegir Auditorio en Cronograma →</a>`}
+        </div>
+      </div>
     `;
   }
 

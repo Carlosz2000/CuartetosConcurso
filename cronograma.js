@@ -6,14 +6,30 @@
 
 const STORAGE_KEY_PROGRAMACIONES = 'concurso_cuartetos_s4_programaciones';
 
-/* Catálogo Oficial de Auditorios */
+/* Nómina Oficial de 12 Jurados Evaluadores (S5 · RF-31 a RF-34) */
+const JURADOS_CATALOGO = [
+  { id: 1, nombre: 'Dra. Beatriz Morales', especialidad: 'Música de Cámara y Violín', correo: 'bmorales@cons.pe', dni: '45678912', institucion: 'Conservatorio Nacional', ternaAuditorio: 'Auditorio Principal' },
+  { id: 2, nombre: 'Dr. Luis Paredes', especialidad: 'Violín Solista', correo: 'lparedes@cons.pe', dni: '23456789', institucion: 'Orquesta Sinfónica Nacional', ternaAuditorio: 'Auditorio Principal' },
+  { id: 3, nombre: 'Mg. Ana Torres', especialidad: 'Viola y Práctica Orquestal', correo: 'atorres@cons.pe', dni: '34567890', institucion: 'Ensamble de Cuerdas', ternaAuditorio: 'Auditorio Principal' },
+  { id: 4, nombre: 'Dr. Carlos Mendoza', especialidad: 'Violonchelo y Cuartetos', correo: 'cmendoza@cons.pe', dni: '45678901', institucion: 'Conservatorio Nacional', ternaAuditorio: 'Auditorio B — Sala Beethoven' },
+  { id: 5, nombre: 'Dra. María Salazar', especialidad: 'Violonchelo Barroco', correo: 'msalazar@cons.pe', dni: '56789012', institucion: 'Academia Filarmónica', ternaAuditorio: 'Auditorio B — Sala Beethoven' },
+  { id: 6, nombre: 'Mtro. Eduardo Valdivia', especialidad: 'Violín Primero y Concertino', correo: 'evaldivia@cons.pe', dni: '67890123', institucion: 'Sinfónica Juvenil', ternaAuditorio: 'Auditorio B — Sala Beethoven' },
+  { id: 7, nombre: 'Dra. Patricia Sotomayor', especialidad: 'Viola de Concierto', correo: 'psotomayor@cons.pe', dni: '78901234', institucion: 'Conservatorio de Lima', ternaAuditorio: 'Auditorio C — Sala Mozart' },
+  { id: 8, nombre: 'Dr. Gonzalo Cárdenas', especialidad: 'Violonchelo y Ensamble', correo: 'gcardenas@cons.pe', dni: '89012345', institucion: 'Camerata Filarmónica', ternaAuditorio: 'Auditorio C — Sala Mozart' },
+  { id: 9, nombre: 'Mg. Valeria Benavides', especialidad: 'Violín y Cuarteto Clásico', correo: 'vbenavides@cons.pe', dni: '90123456', institucion: 'Orquesta de Cámara', ternaAuditorio: 'Auditorio C — Sala Mozart' },
+  { id: 10, nombre: 'Dr. Andrés Holguín', especialidad: 'Dirección Orquestal y Cuerdas', correo: 'aholguin@cons.pe', dni: '11223344', institucion: 'Sociedad Filarmónica', ternaAuditorio: 'Sala de Cámara' },
+  { id: 11, nombre: 'Dra. Carmen Revilla', especialidad: 'Viola y Análisis Interpretativo', correo: 'crevilla@cons.pe', dni: '22334455', institucion: 'Instituto de Música', ternaAuditorio: 'Sala de Cámara' },
+  { id: 12, nombre: 'Mtro. Diego Seminario', especialidad: 'Violonchelo y Continuo', correo: 'dseminario@cons.pe', dni: '33445566', institucion: 'Orquesta Sinfónica Nacional', ternaAuditorio: 'Sala de Cámara' }
+];
+
+/* Catálogo Oficial de Auditorios (4 auditorios con 12 jurados en ternas exclusivas de 3) */
 const AUDITORIOS_BASE = [
   {
     id: 'aud-principal',
     nombre: 'Auditorio Principal',
     sede: 'Sede Central',
     capacidad: 400,
-    terna: ['Dra. B. Morales', 'Dr. L. Paredes', 'Mg. A. Torres'],
+    terna: ['Dra. Beatriz Morales', 'Dr. Luis Paredes', 'Mg. Ana Torres'],
     descripcion: 'Sala principal con acústica sinfónica'
   },
   {
@@ -21,7 +37,7 @@ const AUDITORIOS_BASE = [
     nombre: 'Auditorio B — Sala Beethoven',
     sede: 'Sede Central',
     capacidad: 250,
-    terna: ['Dr. C. Mendoza', 'Dra. M. Salazar', 'Mg. A. Torres'],
+    terna: ['Dr. Carlos Mendoza', 'Dra. María Salazar', 'Mtro. Eduardo Valdivia'],
     descripcion: 'Sala acondicionada para cuartetos y grupos de cámara'
   },
   {
@@ -29,7 +45,7 @@ const AUDITORIOS_BASE = [
     nombre: 'Auditorio C — Sala Mozart',
     sede: 'Sede Norte',
     capacidad: 200,
-    terna: ['Dra. B. Morales', 'Dra. M. Salazar', 'Dr. L. Paredes'],
+    terna: ['Dra. Patricia Sotomayor', 'Dr. Gonzalo Cárdenas', 'Mg. Valeria Benavides'],
     descripcion: 'Acústica brillante para ensambles de cuerda'
   },
   {
@@ -37,7 +53,7 @@ const AUDITORIOS_BASE = [
     nombre: 'Sala de Cámara',
     sede: 'Sede Central',
     capacidad: 120,
-    terna: ['Dr. C. Mendoza', 'Dr. L. Paredes', 'Mg. A. Torres'],
+    terna: ['Dr. Andrés Holguín', 'Dra. Carmen Revilla', 'Mtro. Diego Seminario'],
     descripcion: 'Espacio íntimo para evaluación de detalle técnico'
   }
 ];
@@ -96,8 +112,8 @@ const CUARTETOS_BASE = [
 const PROGRAMACIONES_INICIALES = [
   {
     id: 'prog-1',
-    codigoCuarteto: 'CQ-2026-0147',
-    cuartetoNombre: 'Harmonia String Quartet',
+    codigoCuarteto: 'CQ-2026-0149',
+    cuartetoNombre: 'Sinfonia String Quartet',
     fase: 'Primera Eliminatoria',
     fecha: '2026-10-15',
     hora: '10:00 AM',
@@ -105,9 +121,9 @@ const PROGRAMACIONES_INICIALES = [
     auditorioId: 'aud-principal',
     auditorioNombre: 'Auditorio Principal',
     orden: 1,
-    terna: ['Dra. B. Morales', 'Dr. L. Paredes', 'Mg. A. Torres'],
+    terna: ['Dra. Beatriz Morales', 'Dr. Luis Paredes', 'Mg. Ana Torres'],
     estado: 'Programado',
-    obras: 'Cuarteto en Fa Mayor (Ravel) · Cuarteto No. 2 (Borodin)',
+    obras: 'Cuarteto en Re menor (Mozart) · Cuarteto Op.18 (Beethoven)',
     trazabilidad: 'Turno programado por admin@cons.pe · 01/10/2026 09:30'
   },
   {
@@ -121,7 +137,7 @@ const PROGRAMACIONES_INICIALES = [
     auditorioId: 'aud-b',
     auditorioNombre: 'Auditorio B — Sala Beethoven',
     orden: 2,
-    terna: ['Dr. C. Mendoza', 'Dra. M. Salazar', 'Mg. A. Torres'],
+    terna: ['Dr. Carlos Mendoza', 'Dra. María Salazar', 'Mtro. Eduardo Valdivia'],
     estado: 'Programado',
     obras: 'Cuarteto Op.76 No.3 (Haydn) · Cuarteto No. 2 (Borodin)',
     trazabilidad: 'Turno programado por admin@cons.pe · 01/10/2026 10:15'
@@ -869,4 +885,35 @@ function cerrarModal(id) {
 
 function cerrarTodosLosModales() {
   document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
+}
+
+/* ============================================================
+   MODAL DE NÓMINA OFICIAL DE 12 JURADOS (S5)
+   ============================================================ */
+function abrirModalCatalogoJurados() {
+  const modal = document.getElementById('modalCatalogoJurados');
+  if(!modal) return;
+  renderTablaCatalogoJurados();
+  modal.style.display = 'flex';
+}
+
+function cerrarModalCatalogoJurados() {
+  const modal = document.getElementById('modalCatalogoJurados');
+  if(modal) modal.style.display = 'none';
+}
+
+function renderTablaCatalogoJurados() {
+  const tbody = document.getElementById('tablaJuradosBody');
+  if(!tbody) return;
+
+  tbody.innerHTML = JURADOS_CATALOGO.map(j => `
+    <tr>
+      <td><strong>#${j.id}</strong></td>
+      <td><strong>${j.nombre}</strong><br><small style="color:var(--muted);">${j.correo}</small></td>
+      <td>${j.especialidad}</td>
+      <td><span class="badge badge-code">${j.dni}</span></td>
+      <td>${j.institucion}</td>
+      <td><span class="table-badge-auditorio" style="font-size:11px;">🏛️ ${j.ternaAuditorio}</span></td>
+    </tr>
+  `).join('');
 }

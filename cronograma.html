@@ -21,6 +21,7 @@
       </div>
     </div>
     <div class="top-actions">
+      <button class="btn btn-secondary" onclick="abrirModalCatalogoJurados()">👨‍⚖️ Nómina 12 Jurados (S5)</button>
       <a href="index.html" class="btn btn-secondary">📝 S2 · Inscripción</a>
       <a href="representante.html" class="btn btn-ghost">👤 Portal Representante</a>
       <button class="btn btn-ghost" id="btnRestablecer" title="Restablecer datos predeterminados">🔄 Reset</button>
@@ -361,6 +362,45 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="cerrarModal('modalReprogramadoExitoso')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL: NÓMINA OFICIAL DE 12 JURADOS EVALUADORES (S5) -->
+<div id="modalCatalogoJurados" class="modal-backdrop" style="display: none;">
+  <div class="modal-box" style="max-width: 800px;">
+    <div class="modal-header">
+      <h3 style="display:flex; align-items:center; gap:8px;">
+        👨‍⚖️ Nómina Oficial de 12 Jurados Evaluadores (S5 · RF-31 a RF-34)
+      </h3>
+      <button class="modal-close" onclick="cerrarModalCatalogoJurados()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: 14px;">
+        Conformación reglamentaria de ternas (RF-33): Cada sala cuenta con una terna exclusiva de 3 jurados independientes. Ningún jurado evalúa a cuartetos donde sea profesor responsable (RF-34).
+      </p>
+
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Jurado Evaluador</th>
+              <th>Especialidad Musical</th>
+              <th>DNI</th>
+              <th>Institución de Origen</th>
+              <th>Terna y Sala Asignada</th>
+            </tr>
+          </thead>
+          <tbody id="tablaJuradosBody">
+            <!-- Llenado dinámicamente -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="cerrarModalCatalogoJurados()">Cerrar Nómina</button>
     </div>
   </div>
 </div>

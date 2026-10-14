@@ -20,10 +20,27 @@
       </div>
     </div>
     <div class="top-actions">
-      <a href="cronograma.html" class="btn btn-primary" style="text-decoration:none;">📅 S4 · Cronograma y Auditorios</a>
+      <button class="btn btn-secondary" id="btnTopObservacion" style="display:inline-flex; align-items:center; gap:6px;">
+        💬 Observaciones
+      </button>
+      <a href="cronograma.html" class="btn btn-primary" style="text-decoration:none;">
+        📅 S4 · Cronograma y Auditorios
+      </a>
       <button class="btn btn-ghost" id="btnVolverInicio">📝 S2 · Inscripción</button>
     </div>
   </header>
+
+  <!-- BANNER DESTACADO PARA DEJAR OBSERVACIONES DEL SISTEMA -->
+  <section class="banner-feedback" id="bannerObservacion">
+    <div class="feedback-icon-box">💬</div>
+    <div class="feedback-body">
+      <h4>Buzón de Observaciones y Sugerencias del Sistema</h4>
+      <p>¿Tienes alguna duda sobre la asignación de auditorios, reporte de visualización o sugerencia de mejora? Haz clic aquí para colocar tu observación.</p>
+    </div>
+    <button class="btn btn-primary" id="btnAbrirModalFeedback" style="white-space:nowrap; background:#2563eb;">
+      ✍️ Colocar Observación
+    </button>
+  </section>
 
   <!-- NAVEGACIÓN POR TABS -->
   <nav class="rep-tabs">
@@ -33,9 +50,83 @@
     <button class="tab-btn" data-tab="retiro">🚪 Retiro</button>
   </nav>
 
-  <!-- CONTENIDO DINÁMICO -->
+  <!-- CONTENIDO DINÁMICO SEGÚN TAB -->
   <main id="repContent"></main>
 
+</div>
+
+<!-- ============================================================
+     MODAL: VENTANA EMERGENTE DE OBSERVACIONES SOBRE EL SISTEMA
+     ============================================================ -->
+<div id="modalObservacionSistema" class="modal-backdrop" style="display: none;">
+  <div class="modal-box" style="max-width: 620px;">
+    <div class="modal-header">
+      <h3>💬 Colocar Observación sobre el Sistema</h3>
+      <button class="modal-close" id="btnCerrarModalFeedback">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: 16px;">
+        Tu observación o reporte quedará registrado formalmente para la revisión del comité organizador y equipo técnico.
+      </p>
+
+      <form id="formObservacionSistema">
+        <div class="form-row">
+          <label>Cuarteto / Representante remitente</label>
+          <input type="text" id="obsCuarteto" readonly style="background:#f8fafc; font-weight:600;">
+        </div>
+
+        <div class="form-row">
+          <label>Tipo de Observación <span class="req">*</span></label>
+          <select id="obsTipo" required>
+            <option value="Asignación de Auditorio y Horario">Asignación de Auditorio y Horario (S4)</option>
+            <option value="Proceso de Inscripción o Validación">Proceso de Inscripción o Validación (S2/S3)</option>
+            <option value="Incidencia Técnica o Visualización">Incidencia Técnica o Visualización en Pantalla</option>
+            <option value="Consulta sobre Terna de Jurados o Repertorio">Consulta sobre Terna de Jurados o Repertorio</option>
+            <option value="Sugerencia de Mejora para el Sistema">Sugerencia de Mejora para el Sistema</option>
+            <option value="Otro motivo">Otro motivo</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>Asunto o Título Corto <span class="req">*</span></label>
+          <input type="text" id="obsAsunto" placeholder="Ej: Consulta sobre disponibilidad en Auditorio Principal..." required maxlength="100">
+        </div>
+
+        <div class="form-row">
+          <label>Detalle de la Observación <span class="req">*</span></label>
+          <textarea id="obsDetalle" rows="4" placeholder="Escribe aquí con detalle tu observación, sugerencia o incidencia..." required></textarea>
+          <div class="hint">Por favor sé específico para que el comité pueda darte pronta respuesta.</div>
+        </div>
+
+        <div class="form-row">
+          <label>Prioridad</label>
+          <select id="obsPrioridad">
+            <option value="Normal">Normal</option>
+            <option value="Media">Media</option>
+            <option value="Alta">Alta</option>
+          </select>
+        </div>
+
+        <div class="actions" style="margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" id="btnCancelarFeedback">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnEnviarFeedback">
+            📨 Enviar Observación
+          </button>
+        </div>
+      </form>
+
+      <!-- HISTORIAL DE OBSERVACIONES REGISTRADAS -->
+      <div id="historialObservacionesBox" style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <strong style="font-size:13px; color:var(--ink);">Mis observaciones registradas:</strong>
+          <span id="obsCountBadge" class="badge badge-code" style="background:#e2e8f0; color:var(--ink);">0</span>
+        </div>
+        <div id="listaObservacionesContainer" style="max-height: 180px; overflow-y: auto; font-size: 13px;">
+          <!-- Generado dinámicamente -->
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>

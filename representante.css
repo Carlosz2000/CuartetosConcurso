@@ -279,3 +279,153 @@
     font-size: 18px;
   }
 }
+/* ============================================================
+   BANNER Y MODAL DE OBSERVACIONES SOBRE EL SISTEMA
+   ============================================================ */
+.banner-feedback {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  color: #fff;
+  padding: 18px 24px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.feedback-icon-box {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.feedback-body {
+  flex: 1;
+}
+
+.feedback-body h4 {
+  font-size: 16px;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.feedback-body p {
+  font-size: 13px;
+  color: #cbd5e1;
+  margin: 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .banner-feedback {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Modales para el portal del representante */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  animation: modalIn 0.2s ease-out;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  color: var(--ink);
+  margin: 0;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--ink);
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.obs-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.obs-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.obs-card-title {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.obs-card-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.obs-card-body {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.4;
+  margin-top: 4px;
+}
