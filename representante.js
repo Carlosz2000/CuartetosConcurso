@@ -148,7 +148,7 @@ function renderFichaRepresentante() {
           </div>
           <div class="form-row">
             <label>Correo institucional actualizado</label>
-            <input type="email" id="editCorreo" placeholder="alumno@conservatorio.edu.pe">
+            <input type="email" id="editCorreo" placeholder="alumno@cons.pe">
           </div>
           <div class="actions">
             <button class="btn btn-secondary" onclick="switchTab('ficha')">Cancelar</button>
@@ -553,8 +553,8 @@ function asignarEventListenersDinamicos(tab) {
           return;
         }
 
-        if(!correo.endsWith('@conservatorio.edu.pe')) {
-          alert('⚠️ El correo debe ser institucional (@conservatorio.edu.pe)');
+        if(!correo.endsWith('@cons.pe')) {
+          alert('⚠️ El correo debe ser institucional (@cons.pe)');
           return;
         }
 
