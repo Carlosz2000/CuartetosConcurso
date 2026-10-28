@@ -527,7 +527,7 @@ function renderFicha(){
     validado: {
       badge: 'badge-ok',
       label: 'Validado',
-      alert: `<div class="alert alert-success"><div><strong>[OK] Ficha validada · Modo lectura (RNF-13)</strong>No puedes modificar los datos. Espera la citación oficial.</div></div>`,
+      alert: `<div class="alert alert-success"><div><strong>[OK] Ficha validada · Modo lectura (RNF-13)</strong>No puedes modificar los datos. Espera la Turno de Presentación.</div></div>`,
       actions: `<button class="btn btn-primary" data-accion="cronograma">📅 Ver mi cronograma</button>`
     },
     rechazado: {
