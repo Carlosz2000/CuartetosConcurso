@@ -1,6 +1,6 @@
 /* ============================================================
    PORTAL DEL REPRESENTANTE (S2 + S3 + S4)
-   Incluye: Mi Ficha, Mi Cronograma, Mi Citación, Retiro y Buzón de Observaciones
+   Incluye: Mi Ficha, Mi Cronograma, Mi Presentación, Retiro y Buzón de Observaciones
    ============================================================ */
 
 const STORAGE_KEY_OBSERVACIONES = 'concurso_observaciones_sistema';
@@ -403,7 +403,7 @@ function renderCitacion() {
         <div class="alert alert-info" style="margin-top:16px;">
           <div>
             <strong>📜 Turno de Presentación no disponible aún</strong><br>
-            Tu citación con orden de turno, terna de jurados y horario exacto se generará automáticamente en cuanto reserves tu auditorio en el <strong>Cronograma</strong>.
+            Tu Presentación con orden de turno, terna de jurados y horario exacto se generará automáticamente en cuanto reserves tu auditorio en el <strong>Cronograma</strong>.
           </div>
         </div>
         <div style="text-align: center; margin: 32px 0;">
