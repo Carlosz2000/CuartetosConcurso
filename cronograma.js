@@ -535,7 +535,7 @@ function renderTablaCronograma() {
       <td>
         <div style="display:flex; gap:6px;">
           <button class="btn btn-secondary" style="font-size:12px; padding:4px 8px;" onclick="abrirModalCitacion('${prog.id}')">
-            📜 Citación
+            📜 Presentación
           </button>
           <button class="btn btn-primary" style="font-size:12px; padding:4px 8px;" onclick="abrirModalReprogramar('${prog.id}')">
             🔄 Reprogramar
