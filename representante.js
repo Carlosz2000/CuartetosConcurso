@@ -176,7 +176,7 @@ function renderFichaRepresentante() {
           </div>
         </div>
         <div class="actions" style="margin-top:20px">
-          <button class="btn btn-primary" onclick="switchTab('citacion')">📜 Ver citación oficial</button>
+          <button class="btn btn-primary" onclick="switchTab('citacion')">📜 Ver Turno de Presentación</button>
           <button class="btn btn-secondary" onclick="switchTab('cronograma')">📅 Ver cronograma</button>
           <a href="cronograma.html" class="btn btn-ghost" style="text-decoration:none;">🏛️ Cronograma General</a>
         </div>
@@ -380,7 +380,7 @@ function renderCronograma() {
       </div>
 
       <div class="actions" style="margin-top:24px">
-        <button class="btn btn-primary" onclick="switchTab('citacion')">📜 Ver citación oficial</button>
+        <button class="btn btn-primary" onclick="switchTab('citacion')">📜 Ver Turno de Presentación</button>
         <a href="cronograma.html" class="btn btn-secondary" style="text-decoration:none;">🔄 Reprogramar en Cronograma</a>
       </div>
     </div>
@@ -388,7 +388,7 @@ function renderCronograma() {
 }
 
 /* ============================================================
-   TAB: MI CITACIÓN OFICIAL (S4 · RNF-16)
+   TAB: MI Turno de Presentación (S4 · RNF-16)
    ============================================================ */
 function renderCitacion() {
   const f = Store.ficha;
@@ -399,10 +399,10 @@ function renderCitacion() {
   if(!cronograma) {
     return `
       <div class="card">
-        <h2>Mi Citación Oficial</h2>
+        <h2>Mi Turno de Presentación</h2>
         <div class="alert alert-info" style="margin-top:16px;">
           <div>
-            <strong>📜 Citación oficial no disponible aún</strong><br>
+            <strong>📜 Turno de Presentación no disponible aún</strong><br>
             Tu citación con orden de turno, terna de jurados y horario exacto se generará automáticamente en cuanto reserves tu auditorio en el <strong>Cronograma</strong>.
           </div>
         </div>
@@ -425,7 +425,7 @@ function renderCitacion() {
   return `
     <div class="citacion-card">
       <div class="citacion-header">
-        <h2>CITACIÓN OFICIAL</h2>
+        <h2>Turno de Presentación</h2>
         <div class="codigo">${codigo}</div>
         <div style="font-size:22px; font-weight:800; margin-top:8px;">${nombre}</div>
       </div>
