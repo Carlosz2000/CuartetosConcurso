@@ -133,6 +133,9 @@ function initNombreCuarteto(){
   const btn = $('btnGuardarNombre');
   if(!input || !btn) return;
 
+  btn.disabled = true;
+
+
   input.addEventListener('input', e => {
     clearTimeout(nombreTimer);
     const val = e.target.value.trim();
