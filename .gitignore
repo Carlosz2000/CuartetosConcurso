@@ -10,3 +10,7 @@ node_modules/
 # Allure
 /allure-results/
 /allure-report/
+
+# Environment files
+.env
+

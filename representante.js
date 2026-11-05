@@ -1,3 +1,4 @@
+import { supabase } from './config/supabase.js';
 /* ============================================================
    PORTAL DEL REPRESENTANTE (S2 + S3 + S4)
    Incluye: Mi Ficha, Mi Cronograma, Mi Presentación, Retiro y Buzón de Observaciones
@@ -7,6 +8,21 @@ const STORAGE_KEY_OBSERVACIONES = 'concurso_observaciones_sistema';
 
 // Fecha límite de retiro (RNF-14)
 const FECHA_LIMITE_RETIRO = new Date('2026-10-10T23:59:00');
+const $ = id => document.getElementById(id);
+
+// 🔑 Definimos Store para que las vistas del representante no den error
+const Store = {
+  ficha: {
+    codigo: null,
+    nombre: '',
+    integrantes: [],
+    profesor: null,
+    repertorio: { obligatoria: null, libre: null },
+    estado: 'validado',
+    motivo: '',
+    historial: []
+  }
+};
 
 /* ============================================================
    CONSULTA DE PROGRAMACIÓN OFICIAL EN S4
@@ -43,7 +59,7 @@ function getCronogramaData(codigo, nombre) {
 /* ============================================================
    INICIALIZACIÓN DEL PORTAL
    ============================================================ */
-document.addEventListener('DOMContentLoaded', function() {
+/*document.addEventListener('DOMContentLoaded', function() {
   initPortalRepresentante();
   configurarBuzonObservaciones();
 });
@@ -84,6 +100,85 @@ function initPortalRepresentante() {
   });
 
   // Renderizar tab inicial (ficha)
+  switchTab('ficha');
+}*/
+/* ============================================================
+   INICIALIZACIÓN DEL PORTAL (Conectado a Supabase)
+   ============================================================ */
+// Objeto local de respaldo por si Store no está disponible
+let fichaRepresentante = {
+  codigo: null,
+  nombre: '',
+  integrantes: [],
+  profesor: null,
+  repertorio: { obligatoria: null, libre: null },
+  estado: 'validado',
+  motivo: '',
+  historial: []
+};
+
+document.addEventListener('DOMContentLoaded', async function() {
+  await initPortalRepresentante();
+  configurarBuzonObservaciones();
+});
+
+async function initPortalRepresentante() {
+  try {
+    // Consultar el último cuarteto registrado en Supabase
+    const { data: cuartetosData, error } = await supabase
+      .from('cuarteto')
+      .select('*')
+      .order('id_cuarteto', { ascending: false })
+      .limit(1);
+
+    if (!error && cuartetosData && cuartetosData.length > 0) {
+      const c = cuartetosData[0];
+      Store.ficha.codigo = c.codigo_cuarteto;
+      Store.ficha.nombre = c.nombre_cuarteto;
+      Store.ficha.estado = c.estado_inscripcion ? c.estado_inscripcion.toLowerCase() : 'validado';
+      Store.ficha.repertorio = {
+        obligatoria: { titulo: c.obra_obligatoria },
+        libre: { titulo: c.obra_libre_titulo, duracion: c.obra_libre_duracion }
+      };
+
+      // Consultar integrantes vinculados
+      const { data: integrantesData } = await supabase
+        .from('integrante')
+        .select('*')
+        .eq('id_cuarteto', c.id_cuarteto);
+
+      if (integrantesData) {
+        Store.ficha.integrantes = integrantesData.map(it => ({
+          nombre: it.nombre_completo,
+          edad: it.edad,
+          dni: it.dni,
+          correo: it.correo_institucional,
+          instrumento: it.instrumento
+        }));
+      }
+    }
+  } catch(e) {
+    console.error("Error al cargar desde Supabase:", e);
+  }
+
+  // Actualizar header
+  const codigo = Store.ficha.codigo || 'CQ-2026-0150';
+  const nombre = Store.ficha.nombre || 'Prueba3';
+  const headerElem = $('headerCodigo');
+  if(headerElem) headerElem.textContent = `${codigo} · ${nombre}`;
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      switchTab(this.dataset.tab);
+    });
+  });
+
+  $('btnVolverInicio')?.addEventListener('click', () => {
+    if(confirm('¿Volver a la pantalla de inscripción (S2)?')) {
+      window.location.href = 'index.html';
+    }
+  });
+
   switchTab('ficha');
 }
 

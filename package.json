@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "- **S2: Inscripción de Cuartetos (`index.html` / `app.js`)**: Wizard de 4 pasos (Nombre, Integrantes, Profesor Responsable con catálogo de 10 docentes, Repertorio) y Ficha de Inscripción.\r - **S4: Cronograma y Asignación de Auditorios (`cronograma.html` / `cronograma.js` / `cronograma.css`)**: Subsistema completo funcional de asignación de salas con nómina de 12 jurados evaluadores, selección en cascada (Auditorio → Fecha → Horarios disponibles), bloqueo dinámico de turnos ocupados (RNF-15) y reprogramación con trazabilidad (RNF-17).\r - **Portal del Representante (`representante.html` / `representante.js` / `representante.css`)**: Consulta en tiempo real de Ficha, Cronograma y Citación Oficial (con estado pendiente hasta que se programe en S4), más el nuevo **Buzón de Observaciones del Sistema** interactivo.",
   "main": "app.js",
-  "scripts": {},
+  "scripts": {
+    "dev": "vite"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Carlosz2000/CuartetosConcurso.git"
