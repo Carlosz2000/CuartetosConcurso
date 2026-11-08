@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🏛️ Panel Administrativo · Concurso 2026</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo">🏛️</div>
+        <div>Panel Administrativo<br><small>HU-01 a HU-22 · Gestión integral del concurso</small></div>
+      </div>
+      <div class="top-actions">
+        <span class="badge badge-code" id="adminCredencial">—</span>
+        <button class="btn btn-secondary" onclick="cerrarSesion()">🚪 Cerrar Sesión</button>
+      </div>
+    </header>
+
+    <nav class="subnav-bar">
+      <div class="subnav-links">
+        <button class="subnav-link active" data-admin-tab="s1">🎼 S1 · Obras</button>
+        <a href="cronograma.html" class="subnav-link">📅 S4 · Cronograma</a>
+        <button class="subnav-link" data-admin-tab="s5">👨‍⚖️ S5 · Jurados</button>
+        <button class="subnav-link" data-admin-tab="s6">⚖️ S6 · Supervisión</button>
+        <button class="subnav-link" data-admin-tab="s7">🏆 S7 · Ranking</button>
+      </div>
+      <div class="subnav-links">
+        <a href="landing.html" class="subnav-link">🏠 Volver al Inicio</a>
+      </div>
+    </nav>
+
+    <main id="adminMainContent"></main>
+  </div>
+
+  <script src="js/core/datos.js"></script>
+  <script src="js/core/session.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+
+</html>

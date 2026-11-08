@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>👨‍🏫 Portal del Profesor Responsable · Concurso 2026</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/profesor.css">
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo">👨🏫</div>
+        <div>Portal del Profesor Responsable<br><small>HU-06 · RF-07/19/31/34/38 </small></div>
+      </div>
+      <div class="top-actions">
+        <span class="badge badge-code" id="profesorCredencial">—</span>
+        <button class="btn btn-secondary" onclick="cerrarSesion()">🚪 Cerrar Sesión</button>
+      </div>
+    </header>
+
+    <nav class="subnav-bar">
+      <div class="subnav-links">
+        <button class="subnav-link active" data-prof-tab="mis">👨‍🏫 Mis Cuartetos</button>
+        <button class="subnav-link" data-prof-tab="validar">✅ Validar Fichas (HU-07)</button>
+      </div>
+      <div class="subnav-links">
+        <a href="landing.html" class="subnav-link">🏠 Volver al Inicio</a>
+      </div>
+    </nav>
+
+    <main id="profesorMainContent"></main>
+  </div>
+
+  <script src="js/core/datos.js"></script>
+  <script src="js/core/session.js"></script>
+  <script src="js/core/validacion.js"></script> 
+  <script src="js/profesor.js"></script>
+</body>
+
+</html>

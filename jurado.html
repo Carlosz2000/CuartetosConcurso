@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚖️ Portal del Jurado · Concurso 2026</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/cronograma.css">
+  <link rel="stylesheet" href="css/jurado.css">
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo">⚖️</div>
+        <div>Portal del Jurado Evaluador<br><small>HU-16 · HU-17 · RF-39 a RF-42 · Acceso exclusivo de calificación (CA3
+            HU-14)</small></div>
+      </div>
+      <div class="top-actions">
+        <span class="badge badge-code" id="juradoCredencial">—</span>
+        <button class="btn btn-secondary" onclick="cerrarSesion()">🚪 Cerrar Sesión</button>
+      </div>
+    </header>
+
+    <div class="subnav-bar">
+      <div class="subnav-links">
+        <span class="subnav-link active">⚖️ Mi Sesión de Evaluación</span>
+      </div>
+      <div class="subnav-links">
+        <a href="landing.html" class="subnav-link">🏠 Volver al Inicio</a>
+      </div>
+    </div>
+
+    <main id="juradoMainContent"></main>
+  </div>
+
+  <script src="js/core/datos.js"></script>
+  <script src="js/core/session.js"></script>
+  <script src="js/jurado.js"></script>
+</body>
+
+</html>

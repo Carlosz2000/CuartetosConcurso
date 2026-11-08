@@ -1,0 +1,108 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar sesión · COMPETIA</title>
+  <link rel="stylesheet" href="css/competia.css">
+</head>
+<body class="competia">
+  <div class="login-shell">
+    <section class="login-hero">
+      <a class="brand-mark" href="landing.html">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2.2l1.35 6.3L20 9.2l-5.2 3.8 1.7 6.5L12 16.4 7.5 19.5l1.7-6.5L4 9.2l6.65-.7L12 2.2z"/>
+        </svg>
+        COMPETIA
+      </a>
+
+      <div class="login-hero-copy">
+        <h1>Donde el talento se demuestra y se evalúa</h1>
+        <p class="tagline">conecta . compite . destaca</p>
+      </div>
+
+      <div class="login-meta">
+        <span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 3l7 4v5c0 5-3.2 8.4-7 9.5C8.2 20.4 5 17 5 12V7l7-4z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+          Solo alumnos de conservatorios del país
+        </span>
+        <span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="4" y="5" width="16" height="16" rx="2"/>
+            <path d="M8 3v4M16 3v4M4 11h16"/>
+          </svg>
+          Inscripciones: hasta el 31 de agosto de 2026
+        </span>
+        <span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4zM6 8H4a2 2 0 000 4h2M18 8h2a2 2 0 010 4h-2"/>
+          </svg>
+          Primera y Segunda Eliminatoria · Fase Final
+        </span>
+      </div>
+    </section>
+
+    <section class="login-panel">
+      <h2>¡Bienvenido!</h2>
+      <p class="intro">Todo lo que necesitas, en un solo lugar. Inicia sesión o crea tu cuenta para comenzar.</p>
+
+      <div class="auth-switch" role="tablist">
+        <button type="button" id="tabLogin" class="is-active">Iniciar Sesión</button>
+        <button type="button" id="tabRegister">Registrarse</button>
+      </div>
+
+      <form id="formLogin">
+        <p class="form-title">Iniciar sesión</p>
+        <p class="form-sub">Accede con tus credenciales institucionales</p>
+
+        <div class="field">
+          <label for="loginEmail">CORREO INSTITUCIONAL</label>
+          <input id="loginEmail" type="email" autocomplete="username" placeholder="alumno@conservatorio.edu.pe" required>
+        </div>
+        <div class="field field-password">
+          <label for="loginPassword">CONTRASEÑA</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          <button class="toggle-pass" type="button" data-target="loginPassword" aria-label="Mostrar contraseña">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <p class="auth-error" id="loginError"></p>
+        <button class="btn-cta btn-ingresar" type="submit">Ingresar</button>
+      </form>
+
+      <form id="formRegister" class="hidden">
+        <p class="form-title">Crear cuenta</p>
+        <p class="form-sub">Regístrate con tu correo institucional</p>
+
+        <div class="field">
+          <label for="regNombre">NOMBRE COMPLETO</label>
+          <input id="regNombre" type="text" placeholder="Nombre y apellidos" required>
+        </div>
+        <div class="field">
+          <label for="regEmail">CORREO INSTITUCIONAL</label>
+          <input id="regEmail" type="email" placeholder="alumno@conservatorio.edu.pe" required>
+        </div>
+        <div class="field field-password">
+          <label for="regPassword">CONTRASEÑA</label>
+          <input id="regPassword" type="password" minlength="6" placeholder="Mínimo 6 caracteres" required>
+          <button class="toggle-pass" type="button" data-target="regPassword" aria-label="Mostrar contraseña">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <p class="auth-error" id="registerError"></p>
+        <button class="btn-cta btn-ingresar" type="submit">Registrarse</button>
+      </form>
+    </section>
+  </div>
+  <script src="js/login.js"></script>
+</body>
+</html>
