@@ -1,0 +1,52 @@
+/* ============================================================
+   PANEL ADMINISTRATIVO · Identidad visual (acento índigo)
+   ============================================================ */
+:root {
+  --admin: #4f46e5;
+  --admin-dark: #3730a3;
+  --admin-soft: #eef2ff;
+}
+
+/* ---------- Header ---------- */
+.topbar .brand-logo {
+  background: linear-gradient(135deg, var(--admin), var(--admin-dark));
+}
+
+#adminCredencial {
+  background: #312e81;
+  color: #c7d2fe;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
+/* ---------- Subnav ---------- */
+.subnav-bar {
+  background: #312e81;
+}
+.subnav-link:hover,
+.subnav-link.active {
+  background: var(--admin);
+  border-color: var(--admin);
+}
+
+/* ---------- Tarjetas ---------- */
+#adminMainContent .card {
+  border-top: 4px solid var(--admin);
+}
+
+#adminMainContent .integrante-card:hover {
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.10);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .top-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

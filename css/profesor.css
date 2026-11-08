@@ -1,0 +1,71 @@
+/* ============================================================
+   PORTAL DEL PROFESOR · HU-06
+   Identidad visual del rol docente (acento ámbar)
+   ============================================================ */
+:root {
+  --profesor: #b45309;
+  --profesor-dark: #92400e;
+  --profesor-soft: #fef3c7;
+}
+
+/* ---------- Identidad del rol en el header ---------- */
+.topbar .brand-logo {
+  background: linear-gradient(135deg, var(--profesor), var(--profesor-dark));
+}
+
+#profesorCredencial {
+  background: #78350f;
+  color: #fde68a;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
+/* ---------- Subnav con acento del rol ---------- */
+.subnav-bar {
+  background: #78350f;
+}
+.subnav-link:hover,
+.subnav-link.active {
+  background: var(--profesor);
+  border-color: var(--profesor);
+}
+
+/* ---------- Tarjetas del portal ---------- */
+#profesorMainContent .card {
+  border-top: 4px solid var(--profesor);
+}
+
+#profesorMainContent .integrante-card {
+  background: #fff;
+  transition: box-shadow 0.2s ease;
+}
+#profesorMainContent .integrante-card:hover {
+  box-shadow: 0 6px 18px rgba(180, 83, 9, 0.10);
+}
+
+#profesorMainContent .integrante-card h4 {
+  color: var(--ink);
+}
+
+/* ---------- Input de recomendación académica ---------- */
+#profesorMainContent input[type="text"]:focus {
+  outline: none;
+  border-color: var(--profesor);
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.15);
+}
+
+/* ---------- Responsive (RNF-20) ---------- */
+@media (max-width: 768px) {
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .top-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  #profesorMainContent .integrante-card {
+    padding: 12px;
+  }
+}

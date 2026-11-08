@@ -1,0 +1,101 @@
+/* ============================================================
+   PORTAL DEL JURADO · HU-16 / HU-17
+   Identidad visual del rol evaluador (acento teal)
+   ============================================================ */
+:root {
+  --jurado: #0f766e;
+  --jurado-dark: #115e59;
+  --jurado-soft: #ccfbf1;
+}
+
+/* ---------- Identidad del rol en el header ---------- */
+.topbar .brand-logo {
+  background: linear-gradient(135deg, var(--jurado), var(--jurado-dark));
+}
+
+/* Credencial visible del jurado (JUR-2026-XX) */
+#juradoCredencial {
+  background: #134e4a;
+  color: #99f6e4;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+
+/* ---------- Subnav con acento del rol ---------- */
+.subnav-bar {
+  background: #134e4a;
+}
+.subnav-link:hover,
+.subnav-link.active {
+  background: var(--jurado);
+  border-color: var(--jurado);
+}
+
+/* ---------- Tarjetas de la sesión de evaluación ---------- */
+#juradoMainContent .card {
+  border-top: 4px solid var(--jurado);
+}
+
+#juradoMainContent .integrante-card {
+  background: #fff;
+  transition: box-shadow 0.2s ease;
+}
+#juradoMainContent .integrante-card:hover {
+  box-shadow: 0 6px 18px rgba(15, 118, 110, 0.10);
+}
+
+#juradoMainContent .integrante-card h4 {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+/* ---------- Input de calificación (RF-41) ---------- */
+#juradoMainContent input[type="number"] {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--jurado-dark);
+}
+#juradoMainContent input[type="number"]:focus {
+  outline: none;
+  border-color: var(--jurado);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+}
+#juradoMainContent input[type="number"]:disabled {
+  background: #f1f5f9;
+  color: var(--muted);
+}
+
+/* ---------- Botón de firma inmutable (RF-42) ---------- */
+.btn-firmar-nota {
+  background: var(--jurado);
+  color: #fff;
+}
+.btn-firmar-nota:hover:not(:disabled) {
+  background: var(--jurado-dark);
+}
+.btn-firmar-nota:disabled {
+  background: #94a3b8;
+}
+
+/* ---------- Estado "Acta Cerrada" (RNF-24) ---------- */
+#juradoMainContent .badge-rej {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- Responsive (RNF-20 / RNF-28) ---------- */
+@media (max-width: 768px) {
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .top-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  #juradoMainContent .integrante-card {
+    padding: 12px;
+  }
+}
