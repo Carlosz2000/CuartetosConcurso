@@ -1,4 +1,10 @@
 
+import { supabase } from '../config/supabase.js';
+import { validarNombreCuartetoUnico } from './services/validacionService.js';
+import { validarDniIntegranteUnico, validarCorreoIntegranteUnico } from './services/validacionService.js';
+import { obtenerUltimoCuartetoConDetalles } from './services/cuartetoService.js';
+import { obtenerDocentesHabilitadosBD } from './services/profesorService.js';
+import { obtenerObrasObligatoriasBD, guardarInscripcionCompletaBD } from './services/repertorioService.js';
 function getCatalogoObrasActivo() {
   try {
     const saved = localStorage.getItem('concurso_s1_catalogo_obras');
@@ -150,31 +156,45 @@ function initNombreCuarteto() {
   btn.disabled = true;
 
 
-  input.addEventListener('input', e => {
+  input.addEventListener('input', async e => {
     clearTimeout(nombreTimer);
     const val = e.target.value.trim();
     const fb = $('nombreFeedback');
+    if(!fb) return;
+    
     fb.innerHTML = '';
     btn.disabled = true;
-
     if (!val) return;
+    
     if (val.length < 3) {
       fb.innerHTML = '<div class="error">Mínimo 3 caracteres</div>';
       return;
     }
-    fb.innerHTML = '<div class="hint">⏳ Validando disponibilidad...</div>';
+    
+    fb.innerHTML = '<div class="hint">⏳ Validando disponibilidad en Supabase...</div>';
+    
+    nombreTimer = setTimeout(async () => {
+      try {
+        // Validación directa en la tabla cuarteto de Supabase
+        const { data, error } = await supabase
+          .from('cuarteto')
+          .select('id_cuarteto')
+          .ilike('nombre_cuarteto', val);
 
-    nombreTimer = setTimeout(() => {
-      const duplicado = CUARTETOS_REGISTRADOS.some(
-        c => c.toLowerCase() === val.toLowerCase()
-      );
-      if (duplicado) {
-        fb.innerHTML = '<div class="error">[!] El nombre del cuarteto ya se encuentra registrado (RF-07)</div>';
-      } else {
-        fb.innerHTML = '<div class="ok">[OK] Nombre disponible (validado en &lt; 2s · RNF-06)</div>';
-        btn.disabled = false;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          fb.innerHTML = '<div class="error">[!] El nombre del cuarteto ya se encuentra registrado (RF-11)</div>';
+          btn.disabled = true;
+        } else {
+          fb.innerHTML = '<div class="ok">[OK] Nombre disponible y único</div>';
+          btn.disabled = false;
+        }
+      } catch (err) {
+        console.error('Error validando nombre:', err);
+        fb.innerHTML = '<div class="error">Error al conectar con la base de datos</div>';
       }
-    }, 800);
+    }, 600);
   });
 
   btn.addEventListener('click', () => {
@@ -314,13 +334,19 @@ function marcarError(i, campo, msg) {
   }
 }
 
-function guardarIntegrantes() {
+/* ============================================================
+   PASO 2: INTEGRANTES (Validación local y contra Supabase)
+   ============================================================ */
+async function guardarIntegrantes() {
+  // 1. AQUÍ COLOCAS LA VARIABLE DE EDICIÓN (en la zona del óvalo rojo)
+  const idEdicionActual = Store.ficha.id || null;
+
   const inputs = document.querySelectorAll(
     '#integrantesContainer input, #integrantesContainer select'
   );
   const errores = [];
 
-  // Limpiar estados previos
+  // Limpiar errores visuales previos
   inputs.forEach(inp => {
     inp.classList.remove('invalid');
     const parent = inp.closest('.form-row');
@@ -336,114 +362,226 @@ function guardarIntegrantes() {
   });
 
   const integrantes = Store.ficha.integrantes;
+  let errorEnBD = false;
 
-  // Validar cada integrante
+  // 2. MÁS ABAJO, EN EL BUCLE DE VALIDACIÓN, LE PASAS EL ID:
+  for (let i = 0; i < integrantes.length; i++) {
+    const it = integrantes[i];
+
+    // Aquí pasas idEdicionActual como segundo parámetro:
+    const existeDni = await validarDniIntegranteUnico(it.dni, idEdicionActual);
+    if (existeDni) {
+      marcarError(i, 'dni', `El DNI ${it.dni} ya está registrado en otro cuarteto (RF-15)`);
+      errorEnBD = true;
+    }
+
+    const existeCorreo = await validarCorreoIntegranteUnico(it.correo, idEdicionActual);
+    if (existeCorreo) {
+      marcarError(i, 'correo', `El correo ${it.correo} ya está registrado en otro cuarteto`);
+      errorEnBD = true;
+    }
+  }
+
+  // Limpiar errores visuales previos
+  inputs.forEach(inp => {
+    inp.classList.remove('invalid');
+    const parent = inp.closest('.form-row');
+    const err = parent?.querySelector('.error');
+    if (err) err.remove();
+  });
+
+  // Recoger datos y actualizar Store
+  inputs.forEach(inp => {
+    const i = +inp.dataset.i;
+    const f = inp.dataset.f;
+    Store.ficha.integrantes[i][f] = inp.value.trim();
+  });
+
+  // 1. Validaciones básicas de formato por cada integrante
   integrantes.forEach((it, i) => {
+    // Validar nombre (solo letras y espacios, sin números)
+    const soloLetrasRegex = /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/;
     if (!it.nombre) {
       marcarError(i, 'nombre', 'Nombre obligatorio');
       errores.push(`Integrante ${i + 1}: nombre vacío`);
+    } else if (!soloLetrasRegex.test(it.nombre)) {
+      marcarError(i, 'nombre', 'El nombre solo debe contener letras (sin números ni símbolos)');
+      errores.push(`Integrante ${i + 1}: nombre con formato inválido`);
     }
+
     if (!it.edad) {
       marcarError(i, 'edad', 'Edad obligatoria');
       errores.push(`Integrante ${i + 1}: edad vacía`);
     } else if (it.edad < 14 || it.edad > 35) {
-      marcarError(i, 'edad', 'Edad entre 14 y 35');
+      marcarError(i, 'edad', 'Edad debe estar entre 14 y 35 años');
       errores.push(`Integrante ${i + 1}: edad fuera de rango`);
     }
+
     if (!it.dni) {
       marcarError(i, 'dni', 'DNI obligatorio');
       errores.push(`Integrante ${i + 1}: DNI vacío`);
     } else if (!/^\d{8}$/.test(it.dni)) {
-      marcarError(i, 'dni', 'Debe tener 8 dígitos');
+      marcarError(i, 'dni', 'El DNI debe tener exactamente 8 dígitos numéricos');
       errores.push(`Integrante ${i + 1}: DNI inválido`);
     }
+
     if (!it.correo) {
       marcarError(i, 'correo', 'Correo obligatorio');
       errores.push(`Integrante ${i + 1}: correo vacío`);
     } else if (!it.correo.endsWith('@cons.pe')) {
-      marcarError(i, 'correo', 'Debe ser @cons.pe');
+      marcarError(i, 'correo', 'Debe ser un correo institucional @cons.pe');
       errores.push(`Integrante ${i + 1}: correo institucional inválido`);
     }
+
     if (!it.instrumento) {
       marcarError(i, 'instrumento', 'Instrumento obligatorio');
       errores.push(`Integrante ${i + 1}: instrumento no seleccionado`);
     }
   });
 
-  // Validar que todos los instrumentos estén seleccionados (plantilla completa)
-  const instrumentos = integrantes.map(x => x.instrumento).filter(Boolean);
-  if (instrumentos.length < 4) {
-    errores.push('Todos los integrantes deben seleccionar su instrumento');
-  }
-
-  // DNI duplicados internos
+  // 2. Validar DNIs duplicados internos (dentro del mismo formulario)
   const dnis = integrantes.map(x => x.dni).filter(Boolean);
   if (new Set(dnis).size !== dnis.length) {
-    errores.push('DNI duplicado entre integrantes');
+    errores.push('Hay DNIs duplicados entre los integrantes de este cuarteto');
     const seen = {};
     integrantes.forEach((it, i) => {
       if (seen[it.dni] !== undefined) {
-        marcarError(i, 'dni', 'DNI duplicado en el cuarteto');
-        marcarError(seen[it.dni], 'dni', 'DNI duplicado en el cuarteto');
-      } else seen[it.dni] = i;
+        marcarError(i, 'dni', 'DNI repetido en otro integrante del grupo');
+        marcarError(seen[it.dni], 'dni', 'DNI repetido en otro integrante del grupo');
+      } else {
+        seen[it.dni] = i;
+      }
     });
   }
 
-  // DNI duplicado externo (simulado)
-  const dnisExternos = ['45891203', '11111111'];
-  integrantes.forEach((it, i) => {
-    if (dnisExternos.includes(it.dni)) {
-      marcarError(i, 'dni', 'DNI ya registrado en otro cuarteto (RF-10)');
-      errores.push(`Integrante ${i + 1}: DNI ${it.dni} ya pertenece a otro cuarteto`);
-    }
-  });
+  // 3. Validar correos duplicados internos
+  const correos = integrantes.map(x => x.correo).filter(Boolean);
+  if (new Set(correos).size !== correos.length) {
+    errores.push('Hay correos institucionales duplicados en este cuarteto');
+    const seenCorreo = {};
+    integrantes.forEach((it, i) => {
+      if (seenCorreo[it.correo] !== undefined) {
+        marcarError(i, 'correo', 'Correo repetido en otro integrante');
+        marcarError(seenCorreo[it.correo], 'correo', 'Correo repetido en otro integrante');
+      } else {
+        seenCorreo[it.correo] = i;
+      }
+    });
+  }
 
-  if (errores.length) {
+  if (errores.length > 0) {
     const primerError = document.querySelector('#integrantesContainer .invalid');
     if (primerError) primerError.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
 
+  // 4. Validar contra la BASE DE DATOS de Supabase (DNI o Correo ya registrados en otros cuartetos)
+  //Mostramos un mensaje de espera rápido
+  // 4. Validar contra la BASE DE DATOS de Supabase (DNI o Correo ya registrados en otros cuartetos)
+  const btnGuardar = $('btnGuardarIntegrantes');
+  if (btnGuardar) {
+    btnGuardar.disabled = true;
+    btnGuardar.textContent = 'Verificando con BD...';
+  }
+
+  for (let i = 0; i < integrantes.length; i++) {
+    const it = integrantes[i];
+
+    // Consultar Supabase si el DNI ya existe en la tabla 'integrante'
+    const existeDni = await validarDniIntegranteUnico(it.dni, idEdicionActual);
+    if (existeDni) {
+      marcarError(i, 'dni', `El DNI ${it.dni} ya está registrado en otro cuarteto (RF-15)`);
+      errorEnBD = true;
+    }
+
+    // Consultar Supabase si el correo ya existe en la tabla 'integrante'
+    const existeCorreo = await validarCorreoIntegranteUnico(it.correo, idEdicionActual);
+    if (existeCorreo) {
+      marcarError(i, 'correo', `El correo ${it.correo} ya está registrado en otro cuarteto`);
+      errorEnBD = true;
+    }
+  }
+
+  if (btnGuardar) {
+    btnGuardar.disabled = false;
+    btnGuardar.textContent = 'Guardar y Continuar →';
+  }
+
+  // 🛑 BLOQUEO OBLIGATORIO SI HAY ERRORES EN LA BD
+  if (errorEnBD) {
+    alert('⚠️ No se puede avanzar: Uno o más DNIs o correos institucionales ya se encuentran registrados en otros cuartetos.');
+    const primerError = document.querySelector('#integrantesContainer .invalid');
+    if (primerError) primerError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return; // <--- Esto frena el paso al siguiente nivel de inmediato
+  }
+
+  // Si pasa todas las validaciones, avanza al Paso 3
   Store.ficha.historial.push({
     t: hoy(),
-    a: '4 integrantes registrados · DNI únicos · Plantilla correcta'
+    a: '4 integrantes registrados · DNI únicos validados en BD · Plantilla correcta'
   });
   goToStep(3);
 }
 
 /* ============================================================
-   PASO 3: PROFESOR
+   PASO 3: PROFESOR (Conectado a Supabase)
    ============================================================ */
-function renderDocentes() {
+let listaDocentesBD = [];
+
+async function renderDocentes() {
+  const cont = $('sugerenciasDocentes');
+  if (cont) cont.innerHTML = '<div class="hint">⏳ Cargando docentes de la base de datos...</div>';
+  
+  // Cargar docentes activos desde Supabase
+  listaDocentesBD = await obtenerDocentesHabilitadosBD();
   filtrarDocentes();
 }
 
 function filtrarDocentes() {
   const input = $('buscarDocente');
   if (!input) return;
-  const q = input.value.toLowerCase();
-  const lista = DOCENTES.filter(d => d.nombre.toLowerCase().includes(q));
+  const q = input.value.toLowerCase().trim();
+  
+  const lista = listaDocentesBD.filter(d => 
+    d.nombre.toLowerCase().includes(q) || 
+    d.dni.includes(q) || 
+    d.correo.toLowerCase().includes(q)
+  );
+
   const cont = $('sugerenciasDocentes');
   if (cont) {
-    cont.innerHTML = lista.map(d =>
-      `<button class="docente-btn" data-nombre="${d.nombre}">${d.nombre}</button>`
-    ).join('');
+    if (lista.length === 0) {
+      cont.innerHTML = '<div class="hint" style="color:var(--danger)">No se encontraron docentes activos con ese criterio</div>';
+      return;
+    }
+
+    cont.innerHTML = lista.map(d => {
+      if (d.esJurado) {
+        return `<button class="docente-btn jurado-btn" data-id="${d.id}" style="border-color:var(--danger); color:var(--danger); background:var(--danger-soft);">
+                  ⚖️ ${d.nombre} (Jurado)
+                </button>`;
+      }
+      return `<button class="docente-btn" data-id="${d.id}">
+                👨‍🏫 ${d.nombre}
+              </button>`;
+    }).join('');
   }
 }
 
-function seleccionarDocente(nombre) {
-  const d = DOCENTES.find(x => x.nombre === nombre);
+function seleccionarDocente(idDocente) {
+  const d = listaDocentesBD.find(x => x.id === idDocente);
   if (!d) return;
+
   const info = $('docenteInfo');
   const btn = $('btnGuardarProfesor');
 
   if (d.esJurado) {
     info.innerHTML = `
-      <div class="alert alert-danger">
+      <div class="alert alert-danger" style="margin-top:12px;">
         <div>
-          <strong>[!] El docente presenta incompatibilidad (RNF-09)</strong>
-          ${d.nombre} tiene rol activo de <b>Jurado Evaluador</b> y no puede ser profesor responsable.
-          <br><small>RF-34: Bloqueo automático por conflicto de interés</small>
+          <strong>⚠️ Incompatibilidad por Conflicto de Interés (HU-06 / RF-18)</strong><br>
+          <strong>${d.nombre}</strong> tiene rol activo de <b>${d.rolNombre}</b> en el concurso.
+          <br><small>Bloqueo automático: Un integrante de la Terna de Jurados no puede ser profesor responsable de un cuarteto.</small>
         </div>
       </div>`;
     if (btn) btn.disabled = true;
@@ -452,16 +590,23 @@ function seleccionarDocente(nombre) {
   }
 
   info.innerHTML = `
-    <div class="docente-info">
-      <strong>${d.nombre}</strong><br>
-      DNI: ${d.dni} · Correo: ${d.correo}<br>
-      Especialidad: ${d.especialidad}<br>
-      <span style="color:var(--success);font-weight:600">[OK] Docente activo · No es Jurado (RNF-09 validado)</span>
+    <div class="docente-info" style="margin-top:12px; background:#f0fdf4; border:1px solid #86efac; padding:14px; border-radius:8px;">
+      <strong style="font-size:15px; color:#166534;">👨‍🏫 ${d.nombre}</strong><br>
+      <span style="font-size:13px; color:var(--muted);">DNI: ${d.dni} · Correo: ${d.correo}</span><br>
+      <span style="color:var(--success); font-weight:600; font-size:12px;">[OK] Docente activo · Rol: ${d.rolNombre} (Sin conflicto de interés)</span>
     </div>`;
-  Store.ficha.profesor = d;
+
+  // Guardar en el estado global el ID de usuario real de Supabase
+  Store.ficha.profesor = {
+    id_usuario: d.id,
+    nombre: d.nombre,
+    dni: d.dni,
+    correo: d.correo
+  };
+
   if (btn) btn.disabled = false;
 }
-
+//Esto borro?
 function guardarProfesor() {
   if (!Store.ficha.profesor) return;
   Store.ficha.historial.push({
@@ -472,52 +617,103 @@ function guardarProfesor() {
 }
 
 /* ============================================================
-   PASO 4: REPERTORIO
+   PASO 4: REPERTORIO (Consulta y guardado en Supabase)
    ============================================================ */
-function renderCatalogo() {
+let obrasObligatoriasBD = [];
+
+async function renderCatalogo() {
   const sel = $('obraObligatoria');
   if (!sel) return;
+
+  sel.innerHTML = '<option value="">⏳ Cargando catálogo de obras desde Supabase...</option>';
+
+  obrasObligatoriasBD = await obtenerObrasObligatoriasBD();
+
+  if (obrasObligatoriasBD.length === 0) {
+    sel.innerHTML = '<option value="">-- No hay obras obligatorias disponibles --</option>';
+    return;
+  }
+
   sel.innerHTML = '<option value="">-- Selecciona una obra del catálogo --</option>' +
-    getCatalogoObrasActivo().map(o =>
-      `<option value="${o.id}">${o.titulo} · ${o.compositor} · ${o.duracion}</option>`
+    obrasObligatoriasBD.map(o =>
+      `<option value="${o.id_obra}">${o.titulo} ${o.compositor ? '· ' + o.compositor : ''}</option>`
     ).join('');
 }
 
-function finalizarInscripcion() {
+async function finalizarInscripcion() {
   const idObra = $('obraObligatoria').value;
   const titulo = $('obraLibreTitulo').value.trim();
   const comp = $('obraLibreCompositor').value.trim();
   const dur = $('obraLibreDuracion').value.trim();
 
   if (!idObra) {
-    alert('️ Selecciona una obra obligatoria del catálogo (RF-04)');
+    alert('⚠️ Selecciona una obra obligatoria del catálogo institucional');
     return;
   }
-  if (!titulo || !comp || !dur) {
-    alert('⚠️ Completa todos los datos de la obra libre (RF-05)');
+  if (!titulo) {
+    alert('⚠️ El título de la obra libre es obligatorio');
     return;
   }
 
-  const obligatoria = getCatalogoObrasActivo().find(o => o.id == idObra);
+  // Validación de Compositor (Solo letras, espacios, puntos, comas y guiones)
+  const compRegex = /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s.,-]+$/;
+  if (!comp) {
+    alert('⚠️ El nombre del compositor es obligatorio');
+    return;
+  } else if (!compRegex.test(comp)) {
+    alert('⚠️ El nombre del compositor solo debe contener letras, puntos, comas o guiones (sin números ni símbolos)');
+    return;
+  }
+
+  // Validación de Duración estimada (Formato MM:SS o número de minutos)
+  const durRegex = /^([0-5]?[0-9]):([0-5][0-9])$/; // ej: 07:15 o 12:30
+  let duracionSegundos = 0;
+
+  if (!dur) {
+    alert('⚠️ La duración estimada es obligatoria (Ej: 7:15)');
+    return;
+  } else if (durRegex.test(dur)) {
+    const [min, seg] = dur.split(':').map(Number);
+    duracionSegundos = min * 60 + seg;
+  } else if (!isNaN(dur) && Number(dur) > 0) {
+    duracionSegundos = Math.round(Number(dur) * 60);
+  } else {
+    alert('⚠️ Formato de duración inválido. Usa el formato Minutos:Segundos (Ejemplo: 7:15)');
+    return;
+  }
+
+  const obraObligadaObj = obrasObligatoriasBD.find(o => o.id_obra == idObra);
+
   Store.ficha.repertorio = {
-    obligatoria,
-    libre: { titulo, compositor: comp, duracion: dur }
+    obligatoria: obraObligadaObj,
+    libre: {
+      titulo,
+      compositor: comp,
+      duracionTexto: dur,
+      duracionSegundos: duracionSegundos
+    }
   };
-  Store.ficha.estado = 'preinscripcion';
-  try {
-    localStorage.setItem('concurso_cuartetos_ficha', JSON.stringify(Store.ficha));
-  } catch (e) { }
-  Store.ficha.historial.push({
-    t: hoy(),
-    a: `Repertorio completo: ${obligatoria.titulo} + ${titulo}`
-  });
-  Store.ficha.historial.push({
-    t: hoy(),
-    a: 'Preinscripción completa · En espera de revisión administrativa'
-  });
 
-  alert(`✅ ¡Inscripción completada!\n\nCódigo: ${Store.ficha.codigo}\nCuarteto: ${Store.ficha.nombre}\n\nSerás redirigido a "Mi Ficha".`);
-  showView('ficha');
+  const btnFinalizar = $('btnFinalizarInscripcion');
+  if (btnFinalizar) {
+    btnFinalizar.disabled = true;
+    btnFinalizar.textContent = '⏳ Guardando en Supabase...';
+  }
+
+  // Guardar inscripción transaccional en Supabase
+  const resultado = await guardarInscripcionCompletaBD(Store.ficha);
+
+  if (btnFinalizar) {
+    btnFinalizar.disabled = false;
+    btnFinalizar.textContent = '✓ Finalizar Inscripción';
+  }
+
+  if (resultado.success) {
+    alert(`✅ ¡Inscripción completada exitosamente en la BD!\n\nCódigo de registro: ${Store.ficha.codigo}\nCuarteto: ${Store.ficha.nombre}\n\nSerás redirigido al Portal del Representante.`);
+    window.location.href = 'representante.html';
+  } else {
+    alert(`❌ Ocurrió un error al guardar en la base de datos: ${resultado.message}`);
+  }
 }
 
 /* ============================================================
@@ -742,10 +938,10 @@ document.addEventListener('click', function (e) {
     return;
   }
 
-  // Botones de sugerencia de docente
+  //Botones de sugerencia de docente (Paso 3)
   if (target.matches('.docente-btn') || target.closest('.docente-btn')) {
-    const btn = target.matches('.docente-btn') ? target : target.closest('.docente-btn');
-    seleccionarDocente(btn.dataset.nombre);
+    const btnDocente = target.matches('.docente-btn') ? target : target.closest('.docente-btn');
+    seleccionarDocente(btnDocente.dataset.id);
     return;
   }
 });
@@ -762,46 +958,111 @@ document.addEventListener('input', function (e) {
 /* ============================================================
    INIT: Todo se ejecuta cuando el DOM está listo
    ============================================================ */
-document.addEventListener('DOMContentLoaded', function () {
-  // 🔒 Si ya existe una ficha completada, ofrecer ir al portal
-  try {
-    const fGuardada = localStorage.getItem('concurso_cuartetos_ficha');
-    if (fGuardada) {
-      const f = JSON.parse(fGuardada);
-      if (f.codigo && ['validado', 'observado', 'rechazado', 'retirado'].includes(f.estado)) {
-        const cont = document.querySelector('.app') || document.body;
-        const aviso = document.createElement('div');
-        aviso.className = 'card';
-        aviso.style.cssText = 'text-align:center; padding:40px 20px; margin-top:40px;';
-        aviso.innerHTML = `
-          <div style="font-size:48px; margin-bottom:12px;">✅</div>
-          <h2 style="margin-bottom:8px;">Ya tienes una ficha inscrita</h2>
-          <p style="color:var(--muted); margin-bottom:20px;">
-            Tu cuarteto <strong>${f.nombre}</strong> (${f.codigo}) ya completó la inscripción.
-            <br>Estado actual: <strong>${f.estado}</strong>
-          </p>
-          <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
-            <a href="representante.html" class="btn btn-primary" style="text-decoration:none;">
-              👤 Ir a Mi Portal del Representante →
-            </a>
-            <button class="btn btn-secondary" id="btnInscribirOtro">
-              📝 Inscribir otro cuarteto
-            </button>
-          </div>
-        `;
-        cont.insertBefore(aviso, cont.firstChild);
-        document.getElementById('btnInscribirOtro').addEventListener('click', () => {
-          if (confirm('¿Iniciar una nueva inscripción? Se perderán los datos actuales.')) {
-            localStorage.removeItem('concurso_cuartetos_ficha');
-            location.reload();
+document.addEventListener('DOMContentLoaded', async function () {
+  const urlParams = new URLSearchParams(window.location.search);
+  const editId = urlParams.get('edit_id');
+
+  if (editId) {
+    try {
+      // 1. Consultar el cuarteto, sus integrantes, profesor y la inscripción asociada
+      const { data: c, error } = await supabase
+        .from('cuarteto')
+        .select(`
+          *,
+          integrante (*),
+          usuario:id_profesor_responsable (*)
+        `)
+        .eq('id_cuarteto', editId)
+        .single();
+
+      if (error) throw error;
+
+      if (c) {
+        // Cargar en el estado global Store.ficha
+        Store.ficha.id = c.id_cuarteto;
+        Store.ficha.codigo = c.codigo_cuarteto;
+        Store.ficha.nombre = c.nombre_cuarteto;
+
+        // --- PASO 1: Nombre del Cuarteto ---
+        const inputNombre = $('nombreCuarteto');
+        if (inputNombre) inputNombre.value = c.nombre_cuarteto;
+        
+        const btnGuardarNombre = $('btnGuardarNombre');
+        if (btnGuardarNombre) btnGuardarNombre.disabled = false;
+
+        // --- PASO 2: Integrantes ---
+        if (c.integrante && c.integrante.length > 0) {
+          Store.ficha.integrantes = c.integrante.map(it => ({
+            dni: it.dni || '',
+            nombre: it.nombre_completo || '',
+            correo: it.correo_institucional || '',
+            edad: it.edad || '',
+            instrumento: it.instrumento || ''
+          }));
+          
+          // Si tienes una función visual para renderizar integrantes en pantalla, la llamamos:
+          if (typeof renderIntegrantesInputs === 'function') {
+            renderIntegrantesInputs();
+          } else {
+            // O llenamos los inputs directamente por índice si ya están pintados en el DOM
+            c.integrante.forEach((it, idx) => {
+              const inputDni = $(`integranteDni_${idx}`) || document.querySelectorAll('.integrante-dni')[idx];
+              const inputNombreIt = $(`integranteNombre_${idx}`) || document.querySelectorAll('.integrante-nombre')[idx];
+              const inputCorreo = $(`integranteCorreo_${idx}`) || document.querySelectorAll('.integrante-correo')[idx];
+              const inputEdad = $(`integranteEdad_${idx}`) || document.querySelectorAll('.integrante-edad')[idx];
+              
+              if (inputDni) inputDni.value = it.dni || '';
+              if (inputNombreIt) inputNombreIt.value = it.nombre_completo || '';
+              if (inputCorreo) inputCorreo.value = it.correo_institucional || '';
+              if (inputEdad) inputEdad.value = it.edad || '';
+            });
           }
-        });
-        return; // ⛔ Detiene la ejecución del wizard
+        }
+
+        // --- PASO 3: Profesor Responsable ---
+        if (c.usuario) {
+          Store.ficha.profesor = {
+            id_usuario: c.usuario.id_usuario,
+            nombre: `${c.usuario.nombres} ${c.usuario.apellidos}`,
+            dni: c.usuario.dni,
+            correo: c.usuario.correo_institucional
+          };
+          
+          // Mostrar visualmente el profesor seleccionado si existe el contenedor
+          const infoDocente = $('docenteInfo');
+          const btnProfesor = $('btnGuardarProfesor');
+          if (infoDocente) {
+            infoDocente.innerHTML = `
+              <div class="docente-info" style="margin-top:12px; background:#f0fdf4; border:1px solid #86efac; padding:14px; border-radius:8px;">
+                <strong style="font-size:15px; color:#166534;">👨‍🏫 ${Store.ficha.profesor.nombre}</strong><br>
+                <span style="font-size:13px; color:var(--muted);">DNI: ${Store.ficha.profesor.dni} · Correo: ${Store.ficha.profesor.correo}</span>
+              </div>`;
+          }
+          if (btnProfesor) btnProfesor.disabled = false;
+        }
+
+        // --- PASO 4: Repertorio (Obra Libre y Obligatoria) ---
+        Store.ficha.repertorio = {
+          obligatoria: { titulo: c.obra_obligatoria || '' },
+          libre: {
+            titulo: c.obra_libre_titulo || '',
+            duracionTexto: c.obra_libre_duracion || ''
+          }
+        };
+
+        // Rellenar inputs de repertorio libre si están presentes en la vista
+        const inputObraLibre = $('obraLibreTitulo');
+        const inputDuracion = $('obraLibreDuracion');
+        if (inputObraLibre) inputObraLibre.value = c.obra_libre_titulo || '';
+        if (inputDuracion) inputDuracion.value = c.obra_libre_duracion || '';
+
+        console.log('✅ Datos del cuarteto precargados correctamente para edición.');
       }
+    } catch (err) {
+      console.error('Error al precargar datos del cuarteto desde Supabase:', err);
     }
-  } catch (e) { }
+  }
 
   initNombreCuarteto();
   updateStepper();
-  console.log('✅ App inicializada correctamente');
 });
