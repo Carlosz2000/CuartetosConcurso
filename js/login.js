@@ -1,4 +1,3 @@
-
 import { supabase } from '../config/supabase.js';
 import { obtenerPerfilUsuario } from './services/usuarioService.js';
 
@@ -136,17 +135,13 @@ formLogin.addEventListener('submit', async (e) => {
     }
 });
 
-// REGISTRAR USUARIO CON SUPABASE
+// REGISTRAR USUARIO CON SUPABASE (Modo Seguro Manual)
 formRegister.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearError(registerError);
 
-    const nombre = document.getElementById('regNombre')
-        .value.trim();
-
-    const email = document.getElementById('regEmail')
-        .value.trim().toLowerCase();
-
+    const nombre = document.getElementById('regNombre').value.trim();
+    const email = document.getElementById('regEmail').value.trim().toLowerCase();
     const password = document.getElementById('regPassword').value;
 
     const boton = formRegister.querySelector('button[type="submit"]');
@@ -155,27 +150,46 @@ formRegister.addEventListener('submit', async (e) => {
 
     try {
         // 1. Crear cuenta en Supabase Auth
-        const { data, error } = await supabase.auth.signUp({
+        const { data: authData, error: authError } = await supabase.auth.signUp({
             email: email,
             password: password,
             options: {
-                data: {
-                    nombre: nombre
-                }
+                data: { nombre: nombre }
             }
         });
 
-        if (error) {
-            throw error;
+        if (authError) {
+            throw authError;
         }
 
-        // 2. Si Supabase devuelve una sesión, obtener el perfil
-        if (data.session && data.user) {
-            await redirigirSegunRol(data.user.id);
+        if (authData.user) {
+            // 2. Insertar explícitamente el perfil en tu tabla pública 'usuario'
+            // Usamos id_rol = 1 (Alumno / Representante)
+            const { error: insertError } = await supabase
+                .from('usuario')
+                .insert([
+                    {
+                        id_usuario: authData.user.id,
+                        auth_user_id: authData.user.id,
+                        nombres: nombre,
+                        correo_institucional: email,
+                        id_rol: 1, 
+                        estado: true
+                    }
+                ]);
+
+            if (insertError) {
+                console.warn('Aviso al crear perfil público:', insertError.message);
+            }
+        }
+
+        // 3. Si hay sesión inmediata, obtener el perfil y redirigir
+        if (authData.session && authData.user) {
+            await redirigirSegunRol(authData.user.id);
         } else {
             showError(
                 registerError,
-                'Cuenta creada. Revisa tu correo para confirmar el registro y luego inicia sesión.'
+                '✅ Cuenta creada con éxito. Ya puedes iniciar sesión.'
             );
 
             boton.disabled = false;
