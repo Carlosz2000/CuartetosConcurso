@@ -796,13 +796,18 @@ function bindS6() {
         return;
       }
 
-      if (!confirm(`¿Confirmar DESCALIFICACIÓN de ${nombreCuarteto}? Esta acción es irreversible (RNF-26).`)) return;
+      if (!confirm(`¿Confirmar DESCALIFICACIÓN de ${nombreCuarteto}? Esta acción es irreversible y liberará su turno en el cronograma (RNF-26).`)) return;
 
+      // UPDATE EN SUPABASE: Cambia estado a Descalificado y LIBERA auditorio/horario
       const { error } = await supabase
         .from('cuarteto')
         .update({
           estado_presentacion: 'Descalificado',
-          motivo_descalificacion: motivo
+          motivo_descalificacion: motivo,
+          auditorio: null,
+          sede: null,
+          fecha_presentacion: null,
+          hora_presentacion: null
         })
         .eq('id_cuarteto', idCuarteto);
 
@@ -820,7 +825,7 @@ function bindS6() {
         );
       }
 
-      notificar(`🚫 ${nombreCuarteto} descalificado (${motivo}). Excluido del ranking (HU-18).`, 'ok');
+      notificar(`🚫 ${nombreCuarteto} descalificado (${motivo}). Turno liberado (HU-18).`, 'ok');
       await renderAdminTab();
     });
   });
@@ -881,8 +886,67 @@ async function calcularRankingOrdenadoBD() {
 
 async function renderS7() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
-  const { ranking, descalificados } = await calcularRankingOrdenadoBD();
-  const archivado = estadoConcurso.edicion_archivada;
+  const bloqueado = estadoConcurso.edicion_archivada;
+
+  // 1. Obtener cuartetos inscritos de Supabase
+  const { data: cuartetosBD, error: errC } = await supabase
+    .from('cuarteto')
+    .select('*')
+    .eq('estado_inscripcion', 'Inscrito');
+
+  if (errC) console.error('⚠️ Error al consultar cuartetos en S7:', errC.message);
+
+  // 2. Obtener evaluaciones defensivamente
+  let listaEvaluaciones = [];
+  try {
+    const { data: evsBD } = await supabase
+      .from('evaluacion')
+      .select('*');
+    if (evsBD) listaEvaluaciones = evsBD;
+  } catch (err) {
+    console.warn('⚠️ No se pudo leer la tabla evaluacion:', err);
+  }
+
+  const cuartetos = cuartetosBD || [];
+
+  // 3. Procesar y calcular ranking (excluyendo descalificados)
+  const rankingProcesado = cuartetos.map(c => {
+    const esDescalificado = c.estado_presentacion === 'Descalificado';
+    const evsCuarteto = listaEvaluaciones.filter(e => e.id_cuarteto === c.id_cuarteto || e.codigo_cuarteto === c.codigo_cuarteto);
+
+    const getNota = (letra) => {
+      const e = evsCuarteto.find(x => x.etiqueta_jurado === letra);
+      return e ? Number(e.nota) : null;
+    };
+
+    const notaA = getNota('A');
+    const notaB = getNota('B');
+    const notaC = getNota('C');
+
+    const notasValidas = [notaA, notaB, notaC].filter(n => n !== null);
+    const promedio = notasValidas.length > 0 
+      ? Number((notasValidas.reduce((acc, val) => acc + val, 0) / notasValidas.length).toFixed(2)) 
+      : 0;
+
+    return {
+      id: c.id_cuarteto,
+      codigo: c.codigo_cuarteto || (`CQ-2026-${c.id_cuarteto}`),
+      nombre: c.nombre_cuarteto,
+      auditorio: c.auditorio || 'Sin Asignar',
+      notaA: notaA !== null ? notaA.toFixed(2) : '—',
+      notaB: notaB !== null ? notaB.toFixed(2) : '—',
+      notaC: notaC !== null ? notaC.toFixed(2) : '—',
+      promedio: promedio,
+      descalificado: esDescalificado,
+      motivo: c.motivo_descalificacion || ''
+    };
+  });
+
+  const rankingOficial = rankingProcesado
+    .filter(q => !q.descalificado && q.auditorio)
+    .sort((a, b) => b.promedio - a.promedio);
+
+  const descalificados = rankingProcesado.filter(q => q.descalificado);
 
   return `
     <div class="card">
@@ -891,110 +955,89 @@ async function renderS7() {
           <h2>🏆 Subsistema 7 · Ranking Global, Clasificación, Publicación y Cierre</h2>
           <p class="subtitle">HU-19 · HU-20 · HU-21 · HU-22 · RF-46 a RF-54</p>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <span class="badge ${estadoConcurso.fase_eliminatoria_estado === 'Concluida' ? 'badge-ok' : 'badge-draft'}">
-            Fase: ${estadoConcurso.fase_eliminatoria_estado}
+        <div>
+          <span class="badge ${estadoConcurso.fase_eliminatoria_estado === 'Concluida' ? 'badge-ok' : 'badge-obs'}">
+            FASE: ${estadoConcurso.fase_eliminatoria_estado || 'EN CURSO'}
           </span>
-          <span class="badge ${estadoConcurso.cuadro_publicado ? 'badge-ok' : 'badge-obs'}">
-            Portal Público: ${estadoConcurso.cuadro_publicado ? 'Publicado (RF-50)' : 'No Publicado'}
-          </span>
-          <span class="badge ${archivado ? 'badge-rej' : 'badge-code'}">
-            Edición 2026: ${archivado ? '🔒 ARCHIVADA' : 'En Curso'}
+          <span class="badge ${estadoConcurso.portal_publicado ? 'badge-ok' : 'badge-rej'}">
+            ${estadoConcurso.portal_publicado ? '🌐 PORTAL PÚBLICO: PUBLICADO' : '🔒 PORTAL PÚBLICO: NO PUBLICADO'}
           </span>
         </div>
       </div>
 
-      ${archivado && estadoConcurso.ganadores ? `
-        <div class="alert alert-success" style="margin-top:14px;">
-          <div>
-            <strong>🎉 Edición 2026 Archivada (HU-22 · RF-52/53/54 · RNF-29)</strong><br>
-            Fecha de archivado: ${estadoConcurso.fecha_archivado}. Registros protegidos contra alteraciones.
-          </div>
-        </div>
-        <div class="podium-grid">
-          <div class="podium-card gold">
-            <div style="font-size:32px;">🥇</div>
-            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#854d0e;">1.er Lugar · Ganador</div>
-            <div style="font-size:18px; font-weight:800; margin-top:4px;">${estadoConcurso.ganadores.primero?.nombreCuarteto || '—'}</div>
-            <div style="font-size:14px; font-weight:700; color:#713f12;">Promedio: ${estadoConcurso.ganadores.primero?.promedio ? estadoConcurso.ganadores.primero.promedio.toFixed(2) : '—'}</div>
-          </div>
-          ${estadoConcurso.ganadores.segundo ? `
-          <div class="podium-card silver">
-            <div style="font-size:32px;">🥈</div>
-            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#334155;">2.º Puesto</div>
-            <div style="font-size:18px; font-weight:800; margin-top:4px;">${estadoConcurso.ganadores.segundo.nombreCuarteto}</div>
-            <div style="font-size:14px; font-weight:700; color:#475569;">Promedio: ${estadoConcurso.ganadores.segundo.promedio.toFixed(2)}</div>
-          </div>` : ''}
-          ${estadoConcurso.ganadores.tercero ? `
-          <div class="podium-card bronze">
-            <div style="font-size:32px;">🥉</div>
-            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#9a3412;">3.er Puesto</div>
-            <div style="font-size:18px; font-weight:800; margin-top:4px;">${estadoConcurso.ganadores.tercero.nombreCuarteto}</div>
-            <div style="font-size:14px; font-weight:700; color:#7c2d12;">Promedio: ${estadoConcurso.ganadores.tercero.promedio.toFixed(2)}</div>
-          </div>` : ''}
-        </div>
-      ` : ''}
+      <div style="margin-top:16px; margin-bottom:14px;">
+        <p style="font-size:13px; color:var(--muted);">
+          Edición 2026: <strong>${bloqueado ? '🔒 Archivada y Concluida' : '🟢 En Curso'}</strong>
+        </p>
+      </div>
 
-      <div id="s7Feedback" style="margin-top:12px;"></div>
+      <!-- CONTENEDOR DE FEEDBACK PARA EVITAR ERROR NULL -->
+      <div id="s7FeedbackGlobal" style="margin-bottom:14px;"></div>
 
-      <div class="table-container" style="margin-top:14px;">
-        <table class="table">
+      <!-- TABLA DE RANKING OFICIAL -->
+      <h4 style="margin-bottom:10px; font-size:15px;">📊 Cuadro de Méritos y Promedios (RF-46)</h4>
+      <div style="background:#fff; border-radius:10px; border:1px solid var(--border); overflow:hidden; margin-bottom:20px;">
+        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
           <thead>
-            <tr>
-              <th>Posición</th><th>Cuarteto</th><th>Auditorio</th>
-              <th>Jurado A</th><th>Jurado B</th><th>Jurado C</th>
-              <th>Promedio (RF-46)</th><th>Condición</th>
+            <tr style="background:#f8fafc; border-bottom:1px solid var(--border); color:var(--muted); font-weight:700;">
+              <th style="padding:12px 16px; width:8%;">Pos.</th>
+              <th style="padding:12px 16px; width:27%;">Cuarteto</th>
+              <th style="padding:12px 16px; width:20%;">Auditorio</th>
+              <th style="padding:12px 16px; width:10%; text-align:center;">Jurado A</th>
+              <th style="padding:12px 16px; width:10%; text-align:center;">Jurado B</th>
+              <th style="padding:12px 16px; width:10%; text-align:center;">Jurado C</th>
+              <th style="padding:12px 16px; width:15%; text-align:center;">Promedio Final</th>
             </tr>
           </thead>
           <tbody>
-            ${ranking.map((r, i) => {
-              let condicion = 'En Evaluación';
-              let badgeCls = 'badge-draft';
-              if (r.completo) {
-                if (archivado && i === 0) { condicion = '🏆 Ganador'; badgeCls = 'badge-ok'; }
-                else if (archivado && i === 1) { condicion = '🥈 2.º Puesto'; badgeCls = 'badge-ok'; }
-                else if (archivado && i === 2) { condicion = '🥉 3.er Puesto'; badgeCls = 'badge-ok'; }
-                else if (estadoConcurso.fase_eliminatoria_estado === 'Concluida') { condicion = '✅ Clasificado'; badgeCls = 'badge-ok'; }
-                else { condicion = 'Puntaje Consolidado'; badgeCls = 'badge-code'; }
-              } else {
-                condicion = '⏳ Falta Nota';
-                badgeCls = 'badge-obs';
-              }
-              return `
-                <tr>
-                  <td><strong>#${i + 1}</strong></td>
-                  <td><strong>${r.nombreCuarteto}</strong><br><small style="color:var(--muted);">${r.codigoCuarteto}</small></td>
-                  <td><span class="table-badge-auditorio">${r.auditorio}</span></td>
-                  <td>${r.notaA !== null ? r.notaA.toFixed(1) : '<span style="color:var(--danger);">Pendiente</span>'}</td>
-                  <td>${r.notaB !== null ? r.notaB.toFixed(1) : '<span style="color:var(--danger);">Pendiente</span>'}</td>
-                  <td>${r.notaC !== null ? r.notaC.toFixed(1) : '<span style="color:var(--danger);">Pendiente</span>'}</td>
-                  <td><strong style="font-size:16px; color:var(--primary);">${r.completo ? r.promedio.toFixed(2) : '—'}</strong></td>
-                  <td><span class="badge ${badgeCls}">${condicion}</span></td>
-                </tr>
-              `;
-            }).join('')}
-            ${descalificados.map(d => `
-              <tr style="background:#fff5f5;">
-                <td>—</td>
-                <td><strong>${d.nombre_cuarteto}</strong> (${d.codigo_cuarteto || ('#' + d.id_cuarteto)})</td>
-                <td>${d.auditorio || 'Sin Asignar'}</td>
-                <td colspan="3" style="color:var(--danger); font-weight:600;">Anulado (${d.motivo_descalificacion || 'Inasistencia / Incumplimiento'})</td>
-                <td>—</td>
-                <td><span class="badge badge-rej">Excluido (RF-44)</span></td>
+            ${rankingOficial.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align:center; padding:24px; color:var(--muted);">
+                  No hay cuartetos evaluados y programados en el ranking oficial.
+                </td>
+              </tr>
+            ` : rankingOficial.map((q, idx) => `
+              <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:12px 16px; font-weight:800; color:var(--primary);">#${idx + 1}</td>
+                <td style="padding:12px 16px;">
+                  <strong>${q.nombre}</strong><br><small style="color:var(--muted);">${q.codigo}</small>
+                </td>
+                <td style="padding:12px 16px; color:var(--muted);">${q.auditorio}</td>
+                <td style="padding:12px 16px; text-align:center; font-family:monospace;">${q.notaA}</td>
+                <td style="padding:12px 16px; text-align:center; font-family:monospace;">${q.notaB}</td>
+                <td style="padding:12px 16px; text-align:center; font-family:monospace;">${q.notaC}</td>
+                <td style="padding:12px 16px; text-align:center;">
+                  <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:700;">
+                    ${q.promedio.toFixed(2)}
+                  </span>
+                </td>
               </tr>
             `).join('')}
           </tbody>
         </table>
       </div>
 
-      <div style="margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-        <button type="button" class="btn btn-primary" id="btnCerrarFase" ${archivado ? 'disabled' : ''}>
+      ${descalificados.length > 0 ? `
+        <h4 style="margin-bottom:10px; font-size:14px; color:var(--danger);">🚫 Cuartetos Excluidos por Descalificación (HU-18)</h4>
+        <div style="background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:12px; margin-bottom:20px; font-size:13px;">
+          ${descalificados.map(d => `
+            <div style="margin-bottom:6px;">
+              <strong>${d.nombre}</strong> (${d.codigo}) — Causa: <b>${d.motivo}</b> (Excluido del cuadro de méritos).
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <!-- ACCIONES DE CIERRE Y CONSOLIDACIÓN -->
+      <h4 style="margin-bottom:12px; font-size:15px;">⚙️ Acciones de Consolidación y Cierre (HU-20 a HU-22)</h4>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary" id="btnConsolidarFase" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
           1️⃣ Cerrar y Consolidar Fase (HU-20)
         </button>
-        <button type="button" class="btn btn-secondary" id="btnPublicarCuadro" ${archivado ? 'disabled' : ''}>
+        <button type="button" class="btn btn-secondary" id="btnPublicarCuadro" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
           2️⃣ Publicar Cuadro Oficial (HU-21)
         </button>
-        <button type="button" class="btn btn-success" id="btnArchivarEdicion" ${archivado ? 'disabled' : ''}>
+        <button type="button" class="btn btn-danger" id="btnArchivarEdicion" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
           3️⃣ Finalizar y Archivar Edición (HU-22)
         </button>
       </div>
@@ -1003,76 +1046,67 @@ async function renderS7() {
 }
 
 function bindS7() {
-  const fb = document.getElementById('s7Feedback');
+  const fb = document.getElementById('s7FeedbackGlobal');
 
-  const btnCerrar = document.getElementById('btnCerrarFase');
-  if (btnCerrar) {
-    btnCerrar.addEventListener('click', async () => {
-      const { ranking } = await calcularRankingOrdenadoBD();
-      const incompletos = ranking.filter(r => !r.completo);
-      if (incompletos.length > 0) {
-        fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo (HU-20 · CA1 · RF-48):</strong> Faltan notas en <b>${incompletos.map(x => x.nombreCuarteto).join(', ')}</b>.</div></div>`;
+  // 1. Cerrar y Consolidar Fase (HU-20)
+  const btnConsolidar = document.getElementById('btnConsolidarFase');
+  if (btnConsolidar) {
+    btnConsolidar.addEventListener('click', async () => {
+      if (!confirm('¿Confirma cerrar y consolidar la fase eliminatoria? (HU-20)')) return;
+
+      const { error } = await supabase
+        .from('configuracion_concurso')
+        .update({ fase_eliminatoria_estado: 'Concluida' })
+        .eq('id', 1);
+
+      if (error) {
+        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al consolidar fase: ${error.message}</div>`;
         return;
       }
 
-      await guardarEstadoConcursoBD({
-        fase_eliminatoria_estado: 'Concluida',
-        fase_final_estado: 'Concluida'
-      });
-
-      fb.innerHTML = `<div class="alert alert-success"><div><strong>✅ Fase Concluida (HU-20 · RF-49):</strong> 100% de notas registradas. Mejores promedios → "Clasificado".</div></div>`;
-      notificar('✅ Fase cerrada y cuartetos clasificados (HU-20).', 'ok');
+      notificar('✅ Fase eliminatoria cerrada y consolidada con éxito (HU-20).', 'ok');
       await renderAdminTab();
     });
   }
 
+  // 2. Publicar Cuadro Oficial (HU-21)
   const btnPublicar = document.getElementById('btnPublicarCuadro');
   if (btnPublicar) {
     btnPublicar.addEventListener('click', async () => {
-      const estadoConcurso = await obtenerEstadoConcursoBD();
-      if (estadoConcurso.fase_eliminatoria_estado !== 'Concluida') {
-        fb.innerHTML = `<div class="alert alert-warn"><div><strong>⚠️ Fase aún abierta:</strong> Primero cierre la fase (HU-20).</div></div>`;
+      if (!confirm('¿Desea publicar el cuadro oficial de méritos en el portal público? (HU-21)')) return;
+
+      const { error } = await supabase
+        .from('configuracion_concurso')
+        .update({ portal_publicado: true })
+        .eq('id', 1);
+
+      if (error) {
+        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al publicar cuadro: ${error.message}</div>`;
         return;
       }
 
-      await guardarEstadoConcursoBD({ cuadro_publicado: true });
-
-      if (typeof registrarCorreoSimulado === 'function') {
-        registrarCorreoSimulado(
-          'todos.representantes@cons.pe, todos.profesores@cons.pe',
-          'Acta Oficial de Resultados - Concurso 2026',
-          'Se ha publicado en el portal institucional la tabla oficial de posiciones.',
-          'RF-51'
-        );
-      }
-      notificar('📢 Cuadro Oficial publicado y correo masivo enviado (HU-21 · RF-50/51).', 'ok');
+      notificar('🌐 Cuadro oficial publicado en el portal público con éxito (HU-21).', 'ok');
       await renderAdminTab();
     });
   }
 
+  // 3. Finalizar y Archivar Edición (HU-22)
   const btnArchivar = document.getElementById('btnArchivarEdicion');
   if (btnArchivar) {
     btnArchivar.addEventListener('click', async () => {
-      const estadoConcurso = await obtenerEstadoConcursoBD();
-      if (estadoConcurso.fase_final_estado !== 'Concluida') {
-        fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Requisito (HU-22 · CA1 · RF-52):</strong> La Fase Final debe estar "Concluida".</div></div>`;
+      if (!confirm('⚠️ ADVERTENCIA: Esta acción es irreversible. ¿Desea finalizar y archivar la edición 2026 del concurso? (HU-22)')) return;
+
+      const { error } = await supabase
+        .from('configuracion_concurso')
+        .update({ edicion_archivada: true })
+        .eq('id', 1);
+
+      if (error) {
+        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al archivar edición: ${error.message}</div>`;
         return;
       }
 
-      const { ranking } = await calcularRankingOrdenadoBD();
-      const ganadores = {
-        primero: ranking[0] || null,
-        segundo: ranking[1] || null,
-        tercero: ranking[2] || null
-      };
-
-      await guardarEstadoConcursoBD({
-        edicion_archivada: true,
-        fecha_archivado: new Date().toLocaleString('es-PE'),
-        ganadores: ganadores
-      });
-
-      notificar(`🏆 Edición 2026 archivada. Ganador: ${ranking[0] ? ranking[0].nombreCuarteto : '—'} (HU-22).`, 'ok');
+      notificar('🔒 Edición 2026 finalizada y archivada correctamente (HU-22).', 'ok');
       await renderAdminTab();
     });
   }

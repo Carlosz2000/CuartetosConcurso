@@ -61,7 +61,6 @@ let turnoEnReprogramacionId = null;
    CARGA DE PROGRAMACIONES Y TERNAS DESDE SUPABASE / S5
    ============================================================ */
 async function cargarDatosDinamicosBD() {
-  // 1. Cargar ternas asignadas en S5 desde localStorage
   const ternasGuardadas = parseJSONSeguro(localStorage.getItem('concurso_ternas_auditorio'), null);
   if (ternasGuardadas) {
     auditorios.forEach(aud => {
@@ -71,12 +70,13 @@ async function cargarDatosDinamicosBD() {
     });
   }
 
-  // 2. Extraer cuartetos programados en Supabase
   try {
+    // 1. Consultar únicamente programados que NO estén descalificados
     const { data: programadosBD, error } = await supabase
       .from('cuarteto')
       .select('*')
-      .not('auditorio', 'is', null);
+      .not('auditorio', 'is', null)
+      .neq('estado_presentacion', 'Descalificado');
 
     if (!error && programadosBD) {
       programaciones = programadosBD.map((c, idx) => {
@@ -147,7 +147,7 @@ function getCuartetoPorCodigo(codigo) {
 }
 
 /* ============================================================
-   CARGA DE CUARTETOS DESDE SUPABASE (SOLO ESTADO 'INSCRITO')
+   CARGA DE CUARTETOS DESDE SUPABASE (EXCLUYENDO DESCALIFICADOS)
    ============================================================ */
 async function inicializarSelectoresAuditorioYCuarteto() {
   const selectAud = document.getElementById('selectAuditorio');
@@ -158,12 +158,13 @@ async function inicializarSelectoresAuditorioYCuarteto() {
   const audActual = selectAud.value;
   const cuartetoActual = selectCuarteto.value;
 
-  // 1. Consultar a Supabase únicamente las agrupaciones con estado_inscripcion = 'Inscrito'
   try {
+    // CONSULTA CLAVE: Inscritos Y que NO estén descalificados
     const { data: cuartetosBD, error } = await supabase
       .from('cuarteto')
       .select('*')
-      .eq('estado_inscripcion', 'Inscrito');
+      .eq('estado_inscripcion', 'Inscrito')
+      .neq('estado_presentacion', 'Descalificado');
 
     if (!error && cuartetosBD) {
       cuartetos = cuartetosBD.map(c => ({
@@ -184,7 +185,7 @@ async function inicializarSelectoresAuditorioYCuarteto() {
     cuartetos = [];
   }
 
-  // 2. Poblar selector de auditorios
+  // Poblar Auditorios
   selectAud.innerHTML = '';
   auditorios.forEach(aud => {
     const turnosCount = programaciones.filter(p => p.auditorioId === aud.id || p.auditorioNombre === aud.nombre).length;
@@ -200,20 +201,18 @@ async function inicializarSelectoresAuditorioYCuarteto() {
     selectAud.value = auditorios[0].id;
   }
 
-  // 3. Poblar selector de cuartetos inscritos
+  // Poblar Cuartetos
   selectCuarteto.innerHTML = '<option value="">-- Seleccionar Cuarteto a Programar --</option>';
-
   if (cuartetos.length === 0) {
     const opt = document.createElement('option');
     opt.value = "";
     opt.disabled = true;
-    opt.textContent = "No hay cuartetos en estado 'Inscrito'";
+    opt.textContent = "No hay cuartetos disponibles";
     selectCuarteto.appendChild(opt);
   } else {
     cuartetos.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.codigo;
-
       if (c.auditorioAsignado && c.horaAsignada) {
         opt.textContent = `${c.nombre} (${c.codigo}) — 🔒 Ya tiene auditorio: ${c.auditorioAsignado} (${c.horaAsignada})`;
       } else {

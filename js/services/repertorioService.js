@@ -1,7 +1,9 @@
 // js/services/repertorioService.js
 import { supabase } from '../../config/supabase.js';
 
-//Obtiene del catálogo las obras marcadas como obligatorias y activas en Supabase
+/**
+ * Obtiene del catálogo las obras marcadas como obligatorias y activas en Supabase
+ */
 export async function obtenerObrasObligatoriasBD() {
   try {
     const { data, error } = await supabase
@@ -85,8 +87,7 @@ export async function guardarInscripcionCompletaBD(datosFicha) {
         .single();
 
       if (inscripcionActual) {
-        // Actualizar los datos de la obra libre existente usando id_obra_libre
-        if (inscripcionActual.id_obra_libre) { // <--- Cambiar id_obra por id_obra_libre
+        if (inscripcionActual.id_obra_libre) {
           await supabase
             .from('obra')
             .update({
@@ -94,23 +95,27 @@ export async function guardarInscripcionCompletaBD(datosFicha) {
               compositor: datosFicha.repertorio.libre.compositor,
               duracion_estimada: datosFicha.repertorio.libre.duracionSegundos
             })
-            .eq('id_obra', inscripcionActual.id_obra_libre); // <--- Cambiar id_obra por id_obra_libre aquí también
+            .eq('id_obra', inscripcionActual.id_obra_libre);
         }
 
-        // Actualizar también la inscripción del cuarteto (por si cambió la obra obligatoria o estado)
         await supabase
           .from('inscripcion_cuarteto')
           .update({
-            id_obra_obligatoria: datosFicha.repertorio.obligatoria.id_obra || null // <--- Corregido aquí
+            id_obra_obligatoria: datosFicha.repertorio.obligatoria.id_obra || null
           })
           .eq('id_inscripcion', inscripcionActual.id_inscripcion);
       }
 
       return { success: true, idCuarteto, codigo: datosFicha.codigo };
     }
-    // --- AQUÍ ABAJO CONTINÚA TU CÓDIGO ORIGINAL PARA NUEVAS INSCRIPCIONES ---
 
-    // (Todo lo de insertar obra libre, cuarteto nuevo, etc.)
+    // --- NUEVAS INSCRIPCIONES ---
+    
+    // Obtener la sesión activa del representante que está creando el cuarteto
+    const sessionData = JSON.parse(sessionStorage.getItem('competia_session') || '{}');
+    const representanteId = sessionData.id_usuario || sessionData.id || null;
+    const representanteCorreo = sessionData.correo || sessionData.email || null;
+
     // 1. Insertar la obra libre en la tabla 'obra'
     const { data: obraLibreData, error: errObra } = await supabase
       .from('obra')
@@ -129,7 +134,7 @@ export async function guardarInscripcionCompletaBD(datosFicha) {
     if (errObra) throw errObra;
     const idObraLibre = obraLibreData.id_obra;
 
-    // 2. Insertar el cuarteto en la tabla 'cuarteto'
+    // 2. Insertar el cuarteto en la tabla 'cuarteto' (INCLUYENDO id_representante y correo_contacto)
     const { data: cuartetoData, error: errCuarteto } = await supabase
       .from('cuarteto')
       .insert([
@@ -140,6 +145,8 @@ export async function guardarInscripcionCompletaBD(datosFicha) {
           obra_libre_titulo: datosFicha.repertorio.libre.titulo,
           obra_libre_duracion: datosFicha.repertorio.libre.duracionTexto,
           id_profesor_responsable: datosFicha.profesor?.id_usuario || null,
+          id_representante: representanteId,       // 🔑 VINCULA AL REPRESENTANTE CREADOR
+          correo_contacto: representanteCorreo,     // 🔑 VINCULA SU CORREO DE SESIÓN
           estado_inscripcion: 'En Borrador'
         }
       ])
