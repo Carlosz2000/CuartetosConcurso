@@ -1,12 +1,26 @@
+import { supabase } from '../config/supabase.js';
+
 /* ============================================================
    S4 · CRONOGRAMA Y ASIGNACIÓN DE AUDITORIOS
-   Flujo optimizado: Auditorio -> Fecha -> Horarios Disponibles -> Cuarteto
-   Responde a: "¿Se asigna un cuarteto en diferentes auditorios?" -> NO.
+   Integración 100% Supabase · Filtro de 'Inscrito' · Persistencia Real
    ============================================================ */
 
 const STORAGE_KEY_PROGRAMACIONES = 'concurso_cuartetos_s4_programaciones';
 
-/* Nómina Oficial de 12 Jurados Evaluadores (S5 · RF-31 a RF-34) */
+/* Helper para parsear JSON de forma segura sin romper la promesa */
+function parseJSONSeguro(valor, valorPorDefecto = null) {
+  if (!valor || typeof valor !== 'string' || valor.trim() === '' || valor === 'undefined') {
+    return valorPorDefecto;
+  }
+  try {
+    return JSON.parse(valor);
+  } catch (e) {
+    console.warn('⚠️ JSON corrupto o inválido:', e);
+    return valorPorDefecto;
+  }
+}
+
+/* Nómina Oficial de Jurados Evaluadores (S5) */
 const JURADOS_CATALOGO = [
   { id: 1, nombre: 'Dra. Beatriz Morales', especialidad: 'Música de Cámara y Violín', correo: 'bmorales@cons.pe', dni: '45678912', institucion: 'Conservatorio Nacional', ternaAuditorio: 'Auditorio Principal' },
   { id: 2, nombre: 'Dr. Luis Paredes', especialidad: 'Violín Solista', correo: 'lparedes@cons.pe', dni: '23456789', institucion: 'Orquesta Sinfónica Nacional', ternaAuditorio: 'Auditorio Principal' },
@@ -22,151 +36,91 @@ const JURADOS_CATALOGO = [
   { id: 12, nombre: 'Mtro. Diego Seminario', especialidad: 'Violonchelo y Continuo', correo: 'dseminario@cons.pe', dni: '33445566', institucion: 'Orquesta Sinfónica Nacional', ternaAuditorio: 'Sala de Cámara' }
 ];
 
-/* Catálogo Oficial de Auditorios (4 auditorios con 12 jurados en ternas exclusivas de 3) */
+/* Catálogo Oficial de Auditorios */
 const AUDITORIOS_BASE = [
-  {
-    id: 'aud-principal',
-    nombre: 'Auditorio Principal',
-    sede: 'Sede Central',
-    capacidad: 400,
-    terna: ['Dra. Beatriz Morales', 'Dr. Luis Paredes', 'Mg. Ana Torres'],
-    descripcion: 'Sala principal con acústica sinfónica'
-  },
-  {
-    id: 'aud-b',
-    nombre: 'Auditorio B — Sala Beethoven',
-    sede: 'Sede Central',
-    capacidad: 250,
-    terna: ['Dr. Carlos Mendoza', 'Dra. María Salazar', 'Mtro. Eduardo Valdivia'],
-    descripcion: 'Sala acondicionada para cuartetos y grupos de cámara'
-  },
-  {
-    id: 'aud-c',
-    nombre: 'Auditorio C — Sala Mozart',
-    sede: 'Sede Norte',
-    capacidad: 200,
-    terna: ['Dra. Patricia Sotomayor', 'Dr. Gonzalo Cárdenas', 'Mg. Valeria Benavides'],
-    descripcion: 'Acústica brillante para ensambles de cuerda'
-  },
-  {
-    id: 'aud-camara',
-    nombre: 'Sala de Cámara',
-    sede: 'Sede Central',
-    capacidad: 120,
-    terna: ['Dr. Andrés Holguín', 'Dra. Carmen Revilla', 'Mtro. Diego Seminario'],
-    descripcion: 'Espacio íntimo para evaluación de detalle técnico'
-  }
+  { id: 'aud-principal', nombre: 'Auditorio Principal', sede: 'Sede Central', capacidad: 400, terna: ['Dra. Beatriz Morales', 'Dr. Luis Paredes', 'Mg. Ana Torres'] },
+  { id: 'aud-b', nombre: 'Auditorio B — Sala Beethoven', sede: 'Sede Central', capacidad: 250, terna: ['Dr. Carlos Mendoza', 'Dra. María Salazar', 'Mtro. Eduardo Valdivia'] },
+  { id: 'aud-c', nombre: 'Auditorio C — Sala Mozart', sede: 'Sede Norte', capacidad: 200, terna: ['Dra. Patricia Sotomayor', 'Dr. Gonzalo Cárdenas', 'Mg. Valeria Benavides'] },
+  { id: 'aud-camara', nombre: 'Sala de Cámara', sede: 'Sede Central', capacidad: 120, terna: ['Dr. Andrés Holguín', 'Dra. Carmen Revilla', 'Mtro. Diego Seminario'] }
 ];
 
-/* Bloques de Horarios Oficiales (Turnos de 30 min según reglamento) */
+/* Bloques de Horarios Oficiales */
 const BLOQUES_HORARIOS = [
-  '10:00 AM',
-  '10:30 AM',
-  '11:00 AM',
-  '11:30 AM',
-  '12:00 PM',
-  '02:00 PM',
-  '02:30 PM',
-  '03:00 PM',
-  '03:30 PM',
-  '04:00 PM'
-];
-
-/* Cuartetos Registrados / Validados en S2 y S3 */
-const CUARTETOS_BASE = [
-  {
-    codigo: 'CQ-2026-0147',
-    nombre: 'Harmonia String Quartet',
-    profesor: 'Dra. Beatriz Morales',
-    fase: 'Primera Eliminatoria',
-    obras: 'Cuarteto en Fa Mayor (Ravel) · Cuarteto No. 2 (Borodin)',
-    estadoFicha: 'Validado'
-  },
-  {
-    codigo: 'CQ-2026-0149',
-    nombre: 'Sinfonia String Quartet',
-    profesor: 'Dr. Luis Paredes',
-    fase: 'Primera Eliminatoria',
-    obras: 'Cuarteto en Re menor (Mozart) · Cuarteto Op.18 (Beethoven)',
-    estadoFicha: 'Validado'
-  },
-  {
-    codigo: 'CQ-2026-0151',
-    nombre: 'Arpeggio Quartet',
-    profesor: 'Mg. Ana Torres',
-    fase: 'Segunda Eliminatoria',
-    obras: 'Cuarteto Op.76 No.3 (Haydn) · Cuarteto No. 2 (Borodin)',
-    estadoFicha: 'Validado'
-  },
-  {
-    codigo: 'CQ-2026-0152',
-    nombre: 'Camerata Ensemble',
-    profesor: 'Dra. Lucía León',
-    fase: 'Primera Eliminatoria',
-    obras: 'Cuarteto en Fa Mayor (Ravel) · Cuarteto en Re menor (Mozart)',
-    estadoFicha: 'Validado'
-  }
-];
-
-/* Programaciones Iniciales */
-const PROGRAMACIONES_INICIALES = [
-  {
-    id: 'prog-1',
-    codigoCuarteto: 'CQ-2026-0149',
-    cuartetoNombre: 'Sinfonia String Quartet',
-    fase: 'Primera Eliminatoria',
-    fecha: '2026-10-15',
-    hora: '10:00 AM',
-    sede: 'Sede Central',
-    auditorioId: 'aud-principal',
-    auditorioNombre: 'Auditorio Principal',
-    orden: 1,
-    terna: ['Dra. Beatriz Morales', 'Dr. Luis Paredes', 'Mg. Ana Torres'],
-    estado: 'Programado',
-    obras: 'Cuarteto en Re menor (Mozart) · Cuarteto Op.18 (Beethoven)',
-    trazabilidad: 'Turno programado por admin@cons.pe · 01/10/2026 09:30'
-  },
-  {
-    id: 'prog-2',
-    codigoCuarteto: 'CQ-2026-0151',
-    cuartetoNombre: 'Arpeggio Quartet',
-    fase: 'Segunda Eliminatoria',
-    fecha: '2026-10-15',
-    hora: '10:00 AM',
-    sede: 'Sede Central',
-    auditorioId: 'aud-b',
-    auditorioNombre: 'Auditorio B — Sala Beethoven',
-    orden: 2,
-    terna: ['Dr. Carlos Mendoza', 'Dra. María Salazar', 'Mtro. Eduardo Valdivia'],
-    estado: 'Programado',
-    obras: 'Cuarteto Op.76 No.3 (Haydn) · Cuarteto No. 2 (Borodin)',
-    trazabilidad: 'Turno programado por admin@cons.pe · 01/10/2026 10:15'
-  }
+  '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM',
+  '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM'
 ];
 
 // Estado global en memoria
 let programaciones = [];
 let auditorios = [...AUDITORIOS_BASE];
-let cuartetos = [...CUARTETOS_BASE];
-let horarioSeleccionadoActual = null; // Guarda el horario seleccionado con un clic
+let cuartetos = [];
+let horarioSeleccionadoActual = null;
+let turnoEnReprogramacionId = null;
 
-document.addEventListener('DOMContentLoaded', () => {
-  cargarDatos();
-  sincronizarConS2();
+/* ============================================================
+   CARGA DE PROGRAMACIONES Y TERNAS DESDE SUPABASE / S5
+   ============================================================ */
+async function cargarDatosDinamicosBD() {
+  // 1. Cargar ternas asignadas en S5 desde localStorage
+  const ternasGuardadas = parseJSONSeguro(localStorage.getItem('concurso_ternas_auditorio'), null);
+  if (ternasGuardadas) {
+    auditorios.forEach(aud => {
+      if (ternasGuardadas[aud.nombre]) {
+        aud.terna = ternasGuardadas[aud.nombre];
+      }
+    });
+  }
+
+  // 2. Extraer cuartetos programados en Supabase
+  try {
+    const { data: programadosBD, error } = await supabase
+      .from('cuarteto')
+      .select('*')
+      .not('auditorio', 'is', null);
+
+    if (!error && programadosBD) {
+      programaciones = programadosBD.map((c, idx) => {
+        const audObj = auditorios.find(a => a.nombre === c.auditorio || a.id === c.auditorio);
+        const ternaActual = audObj ? audObj.terna : ['Jurado A', 'Jurado B', 'Jurado C'];
+
+        return {
+          id: `prog-${c.id_cuarteto}`,
+          cuartetoId: c.id_cuarteto,
+          codigoCuarteto: c.codigo_cuarteto || (`CQ-2026-${c.id_cuarteto}`),
+          cuartetoNombre: c.nombre_cuarteto,
+          fase: 'Primera Eliminatoria',
+          fecha: c.fecha_presentacion || '2026-10-15',
+          hora: c.hora_presentacion || '10:00 AM',
+          sede: c.sede || 'Sede Central',
+          auditorioId: audObj ? audObj.id : 'aud-b',
+          auditorioNombre: c.auditorio,
+          orden: idx + 1,
+          terna: ternaActual,
+          estado: c.estado_presentacion || 'Programado',
+          obras: `${c.obra_obligatoria || 'Obra Obligatoria'} · ${c.obra_libre_titulo || 'Obra Libre'}`,
+          trazabilidad: `Sincronizado desde Supabase`
+        };
+      });
+    }
+  } catch (err) {
+    console.warn('⚠️ Error al sincronizar programaciones:', err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await cargarDatosDinamicosBD();
+  await inicializarSelectoresAuditorioYCuarteto();
   renderTodo();
   configurarEventos();
 });
 
 function cargarDatos() {
   const progsGuardadas = localStorage.getItem(STORAGE_KEY_PROGRAMACIONES);
-  if (progsGuardadas) {
-    try {
-      programaciones = JSON.parse(progsGuardadas);
-    } catch (e) {
-      programaciones = [...PROGRAMACIONES_INICIALES];
-    }
+  const datos = parseJSONSeguro(progsGuardadas, null);
+  if (datos && Array.isArray(datos)) {
+    programaciones = datos;
   } else {
-    programaciones = [...PROGRAMACIONES_INICIALES];
+    programaciones = [];
     guardarDatos();
   }
 }
@@ -175,44 +129,106 @@ function guardarDatos() {
   localStorage.setItem(STORAGE_KEY_PROGRAMACIONES, JSON.stringify(programaciones));
 }
 
-function sincronizarConS2() {
-  const fichaLocal = localStorage.getItem('concurso_cuartetos_ficha');
-  if (fichaLocal) {
-    try {
-      const f = JSON.parse(fichaLocal);
-      if (f.codigo && f.nombre && !cuartetos.some(c => c.codigo === f.codigo)) {
-        cuartetos.unshift({
-          codigo: f.codigo,
-          nombre: f.nombre,
-          profesor: f.profesor ? f.profesor.nombre : 'Docente Asignado',
-          fase: 'Primera Eliminatoria',
-          obras: f.repertorio && f.repertorio.obligatoria ? f.repertorio.obligatoria.titulo : 'Obras reglamentarias',
-          estadoFicha: f.estado === 'validado' ? 'Validado' : 'Validado (Automático)'
-        });
-      }
-    } catch (e) { }
-  }
-}
-
 /* Consultas de ocupación */
 function getTurnoOcupado(auditorioId, fecha, hora) {
-  return programaciones.find(p => p.auditorioId === auditorioId && p.fecha === fecha && p.hora === hora) || null;
-}
-
-function getTurnosDeAuditorioFecha(auditorioId, fecha) {
-  return programaciones.filter(p => p.auditorioId === auditorioId && p.fecha === fecha);
+  return programaciones.find(p => (p.auditorioId === auditorioId || p.auditorioNombre === auditorioId) && p.fecha === fecha && p.hora === hora) || null;
 }
 
 function getProgramacionDeCuarteto(codigoCuarteto) {
-  return programaciones.find(p => p.codigoCuarteto === codigoCuarteto) || null;
+  return programaciones.find(p => p.codigoCuarteto === codigoCuarteto || p.cuartetoId === codigoCuarteto) || null;
 }
 
 function getAuditorioPorId(auditorioId) {
-  return auditorios.find(a => a.id === auditorioId);
+  return auditorios.find(a => a.id === auditorioId || a.nombre === auditorioId);
 }
 
 function getCuartetoPorCodigo(codigo) {
-  return cuartetos.find(c => c.codigo === codigo);
+  return cuartetos.find(c => c.codigo === codigo || c.id === codigo);
+}
+
+/* ============================================================
+   CARGA DE CUARTETOS DESDE SUPABASE (SOLO ESTADO 'INSCRITO')
+   ============================================================ */
+async function inicializarSelectoresAuditorioYCuarteto() {
+  const selectAud = document.getElementById('selectAuditorio');
+  const selectCuarteto = document.getElementById('selectCuarteto');
+
+  if (!selectAud || !selectCuarteto) return;
+
+  const audActual = selectAud.value;
+  const cuartetoActual = selectCuarteto.value;
+
+  // 1. Consultar a Supabase únicamente las agrupaciones con estado_inscripcion = 'Inscrito'
+  try {
+    const { data: cuartetosBD, error } = await supabase
+      .from('cuarteto')
+      .select('*')
+      .eq('estado_inscripcion', 'Inscrito');
+
+    if (!error && cuartetosBD) {
+      cuartetos = cuartetosBD.map(c => ({
+        id: c.id_cuarteto,
+        codigo: c.codigo_cuarteto || (`CQ-2026-${c.id_cuarteto}`),
+        nombre: c.nombre_cuarteto,
+        profesor: 'Docente Responsable',
+        auditorioAsignado: c.auditorio,
+        horaAsignada: c.hora_presentacion,
+        fechaAsignada: c.fecha_presentacion,
+        obras: `${c.obra_obligatoria || 'Obra Obligatoria'} · ${c.obra_libre_titulo || 'Obra Libre'}`
+      }));
+    } else {
+      cuartetos = [];
+    }
+  } catch (err) {
+    console.warn('⚠️ No se pudo obtener la nómina desde Supabase:', err);
+    cuartetos = [];
+  }
+
+  // 2. Poblar selector de auditorios
+  selectAud.innerHTML = '';
+  auditorios.forEach(aud => {
+    const turnosCount = programaciones.filter(p => p.auditorioId === aud.id || p.auditorioNombre === aud.nombre).length;
+    const opt = document.createElement('option');
+    opt.value = aud.id;
+    opt.textContent = `${aud.nombre} (${aud.sede} · Cap. ${aud.capacidad}) ${turnosCount > 0 ? `— [${turnosCount} turno(s) asignado(s)]` : '— [Disponible]'}`;
+    selectAud.appendChild(opt);
+  });
+
+  if (audActual && auditorios.some(a => a.id === audActual)) {
+    selectAud.value = audActual;
+  } else if (auditorios.length > 0) {
+    selectAud.value = auditorios[0].id;
+  }
+
+  // 3. Poblar selector de cuartetos inscritos
+  selectCuarteto.innerHTML = '<option value="">-- Seleccionar Cuarteto a Programar --</option>';
+
+  if (cuartetos.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = "";
+    opt.disabled = true;
+    opt.textContent = "No hay cuartetos en estado 'Inscrito'";
+    selectCuarteto.appendChild(opt);
+  } else {
+    cuartetos.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.codigo;
+
+      if (c.auditorioAsignado && c.horaAsignada) {
+        opt.textContent = `${c.nombre} (${c.codigo}) — 🔒 Ya tiene auditorio: ${c.auditorioAsignado} (${c.horaAsignada})`;
+      } else {
+        opt.textContent = `${c.nombre} (${c.codigo}) — 🟢 Pendiente de Programación`;
+      }
+      selectCuarteto.appendChild(opt);
+    });
+  }
+
+  if (cuartetoActual) {
+    selectCuarteto.value = cuartetoActual;
+  }
+
+  actualizarInfoAuditorioSeleccionado();
+  actualizarEstadoCuartetoSeleccionado();
 }
 
 /* ============================================================
@@ -221,7 +237,6 @@ function getCuartetoPorCodigo(codigo) {
 function renderTodo() {
   actualizarEstadisticas();
   renderAuditoriosGrid();
-  inicializarSelectoresAuditorioYCuarteto();
   renderGrillaHorariosDisponibles();
   renderTablaCronograma();
   actualizarResumenTurno();
@@ -232,19 +247,24 @@ function actualizarEstadisticas() {
   const programados = programaciones.length;
   const totalAuditorios = auditorios.length;
 
-  document.getElementById('statTotalCuartetos').textContent = totalCuartetos;
-  document.getElementById('statProgramados').textContent = `${programados}/${totalCuartetos}`;
-  document.getElementById('statTotalAuditorios').textContent = totalAuditorios;
-  document.getElementById('statTurnosTotales').textContent = programados;
+  const elTot = document.getElementById('statTotalCuartetos');
+  const elProg = document.getElementById('statProgramados');
+  const elAud = document.getElementById('statTotalAuditorios');
+  const elTurnos = document.getElementById('statTurnosTotales');
+
+  if (elTot) elTot.textContent = totalCuartetos;
+  if (elProg) elProg.textContent = `${programados}/${totalCuartetos}`;
+  if (elAud) elAud.textContent = totalAuditorios;
+  if (elTurnos) elTurnos.textContent = programados;
 }
 
-/* Monitor de Auditorios */
 function renderAuditoriosGrid() {
   const container = document.getElementById('auditoriosGrid');
+  if (!container) return;
   container.innerHTML = '';
 
   auditorios.forEach(aud => {
-    const turnos = programaciones.filter(p => p.auditorioId === aud.id);
+    const turnos = programaciones.filter(p => p.auditorioId === aud.id || p.auditorioNombre === aud.nombre);
     const tieneTurnos = turnos.length > 0;
 
     const card = document.createElement('div');
@@ -296,10 +316,14 @@ function renderAuditoriosGrid() {
 }
 
 function seleccionarAuditorioDesdeTarjeta(auditorioId) {
-  document.getElementById('selectAuditorio').value = auditorioId;
-  actualizarInfoAuditorioSeleccionado();
-  renderGrillaHorariosDisponibles();
-  document.getElementById('formProgramar').scrollIntoView({ behavior: 'smooth' });
+  const selectAud = document.getElementById('selectAuditorio');
+  if (selectAud) {
+    selectAud.value = auditorioId;
+    actualizarInfoAuditorioSeleccionado();
+    renderGrillaHorariosDisponibles();
+  }
+  const formP = document.getElementById('formProgramar');
+  if (formP) formP.scrollIntoView({ behavior: 'smooth' });
 }
 
 function cerrarSesion() {
@@ -309,56 +333,13 @@ function cerrarSesion() {
   }
 }
 
-/* Inicializa select de auditorio y de cuarteto */
-function inicializarSelectoresAuditorioYCuarteto() {
-  const selectAud = document.getElementById('selectAuditorio');
-  const selectCuarteto = document.getElementById('selectCuarteto');
-
-  const audActual = selectAud.value;
-  const cuartetoActual = selectCuarteto.value;
-
-  // Llenar Auditorios
-  selectAud.innerHTML = '';
-  auditorios.forEach(aud => {
-    const turnosCount = programaciones.filter(p => p.auditorioId === aud.id).length;
-    const opt = document.createElement('option');
-    opt.value = aud.id;
-    opt.textContent = `${aud.nombre} (${aud.sede} · Cap. ${aud.capacidad}) ${turnosCount > 0 ? `— [${turnosCount} turno(s) asignado(s)]` : '— [Disponible]'}`;
-    selectAud.appendChild(opt);
-  });
-
-  if (audActual && auditorios.some(a => a.id === audActual)) {
-    selectAud.value = audActual;
-  } else {
-    selectAud.value = auditorios[0].id;
-  }
-
-  // Llenar Cuartetos
-  selectCuarteto.innerHTML = '<option value="">-- Seleccionar Cuarteto a Programar --</option>';
-  cuartetos.forEach(c => {
-    const yaAsignado = getProgramacionDeCuarteto(c.codigo);
-    const opt = document.createElement('option');
-    opt.value = c.codigo;
-    if (yaAsignado) {
-      opt.textContent = `${c.nombre} (${c.codigo}) — 🔒 Ya tiene auditorio: ${yaAsignado.auditorioNombre} (${yaAsignado.hora})`;
-    } else {
-      opt.textContent = `${c.nombre} (${c.codigo}) — 🟢 Pendiente de Programación`;
-    }
-    selectCuarteto.appendChild(opt);
-  });
-
-  if (cuartetoActual) {
-    selectCuarteto.value = cuartetoActual;
-  }
-
-  actualizarInfoAuditorioSeleccionado();
-  actualizarEstadoCuartetoSeleccionado();
-}
-
 function actualizarInfoAuditorioSeleccionado() {
-  const audId = document.getElementById('selectAuditorio').value;
-  const aud = getAuditorioPorId(audId);
+  const selectAud = document.getElementById('selectAuditorio');
   const infoEl = document.getElementById('infoAuditorioSeleccionado');
+  if (!selectAud || !infoEl) return;
+
+  const audId = selectAud.value;
+  const aud = getAuditorioPorId(audId);
 
   if (aud) {
     infoEl.innerHTML = `
@@ -370,10 +351,13 @@ function actualizarInfoAuditorioSeleccionado() {
 }
 
 function actualizarEstadoCuartetoSeleccionado() {
-  const codigo = document.getElementById('selectCuarteto').value;
+  const selectCuarteto = document.getElementById('selectCuarteto');
   const alertEl = document.getElementById('alertCuartetoEstado');
   const btnProgramar = document.getElementById('btnProgramar');
 
+  if (!selectCuarteto || !alertEl || !btnProgramar) return;
+
+  const codigo = selectCuarteto.value;
   if (!codigo) {
     alertEl.style.display = 'none';
     btnProgramar.disabled = true;
@@ -400,24 +384,23 @@ function actualizarEstadoCuartetoSeleccionado() {
   actualizarResumenTurno();
 }
 
-/* ============================================================
-   NUEVA FUNCIONALIDAD CLAVE: GRILLA DE HORARIOS DEL AUDITORIO
-   ============================================================ */
 function renderGrillaHorariosDisponibles() {
-  const audId = document.getElementById('selectAuditorio').value;
-  const fecha = document.getElementById('inputFecha').value;
+  const selectAud = document.getElementById('selectAuditorio');
+  const inputFecha = document.getElementById('inputFecha');
   const container = document.getElementById('slotsGrid');
   const countDisponiblesEl = document.getElementById('slotsDisponiblesCount');
+
+  if (!selectAud || !inputFecha || !container) return;
+
+  const audId = selectAud.value;
+  const fecha = inputFecha.value;
 
   container.innerHTML = '';
   let disponiblesCount = 0;
 
-  // Si el horario seleccionado previamente no está disponible en este nuevo auditorio/fecha, resetearlo
   if (horarioSeleccionadoActual) {
     const ocupante = getTurnoOcupado(audId, fecha, horarioSeleccionadoActual);
-    if (ocupante) {
-      horarioSeleccionadoActual = null;
-    }
+    if (ocupante) horarioSeleccionadoActual = null;
   }
 
   BLOQUES_HORARIOS.forEach(hora => {
@@ -444,11 +427,9 @@ function renderGrillaHorariosDisponibles() {
             <strong>${ocupante.cuartetoNombre}</strong>
             <br><small style="color:#94a3b8;">${ocupante.codigoCuarteto}</small>
           ` : (esSeleccionado ? `
-            <strong style="color:var(--primary);">Turno seleccionado</strong><br>
-            Haz clic en otro para cambiar
+            <strong style="color:var(--primary);">Turno seleccionado</strong><br>Haz clic en otro para cambiar
           ` : `
-            Horario disponible.<br>
-            Haz clic para seleccionar este turno.
+            Horario disponible.<br>Haz clic para seleccionar este turno.
           `)}
         </div>
       </div>
@@ -461,25 +442,34 @@ function renderGrillaHorariosDisponibles() {
         actualizarEstadoCuartetoSeleccionado();
       };
     } else {
-      slotCard.title = `Este horario ya está reservado por ${ocupante.cuartetoNombre}. No se puede seleccionar.`;
+      slotCard.title = `Reservado por ${ocupante.cuartetoNombre}.`;
     }
 
     container.appendChild(slotCard);
   });
 
-  countDisponiblesEl.textContent = `${disponiblesCount} de ${BLOQUES_HORARIOS.length} horarios libres`;
+  if (countDisponiblesEl) {
+    countDisponiblesEl.textContent = `${disponiblesCount} de ${BLOQUES_HORARIOS.length} horarios libres`;
+  }
   actualizarResumenTurno();
 }
 
 function actualizarResumenTurno() {
-  const audId = document.getElementById('selectAuditorio').value;
-  const fecha = document.getElementById('inputFecha').value;
-  const codigoCuarteto = document.getElementById('selectCuarteto').value;
-  const aud = getAuditorioPorId(audId);
-  const cuarteto = getCuartetoPorCodigo(codigoCuarteto);
+  const selectAud = document.getElementById('selectAuditorio');
+  const inputFecha = document.getElementById('inputFecha');
+  const selectCuarteto = document.getElementById('selectCuarteto');
   const resumenBox = document.getElementById('resumenTurnoBox');
   const resumenInfo = document.getElementById('resumenTurnoInfo');
   const btnProgramar = document.getElementById('btnProgramar');
+
+  if (!selectAud || !inputFecha || !selectCuarteto || !resumenBox || !resumenInfo || !btnProgramar) return;
+
+  const audId = selectAud.value;
+  const fecha = inputFecha.value;
+  const codigoCuarteto = selectCuarteto.value;
+
+  const aud = getAuditorioPorId(audId);
+  const cuarteto = getCuartetoPorCodigo(codigoCuarteto);
 
   if (horarioSeleccionadoActual && aud && cuarteto && !getProgramacionDeCuarteto(codigoCuarteto)) {
     resumenBox.style.display = 'flex';
@@ -493,17 +483,31 @@ function actualizarResumenTurno() {
     btnProgramar.disabled = false;
   } else {
     resumenBox.style.display = 'none';
-    if (!horarioSeleccionadoActual) {
-      btnProgramar.disabled = true;
-    }
+    if (!horarioSeleccionadoActual) btnProgramar.disabled = true;
   }
 }
 
+/* Helper: Convertir formato "03:30 PM" a minutos para ordenamiento cronológico real */
+function horaAMinutos(horaStr) {
+  if (!horaStr) return 0;
+  const partes = horaStr.split(' ');
+  if (partes.length < 2) return 0;
+  
+  const [tiempo, ampm] = partes;
+  let [horas, minutos] = tiempo.split(':').map(Number);
+
+  if (ampm === 'PM' && horas < 12) horas += 12;
+  if (ampm === 'AM' && horas === 12) horas = 0;
+
+  return horas * 60 + minutos;
+}
+
 /* ============================================================
-   TABLA DE CRONOGRAMA
+   TABLA DE CRONOGRAMA CON ORDEN CRONOLÓGICO REAL
    ============================================================ */
 function renderTablaCronograma() {
   const tbody = document.getElementById('cronogramaTableBody');
+  if (!tbody) return;
   tbody.innerHTML = '';
 
   if (programaciones.length === 0) {
@@ -517,8 +521,12 @@ function renderTablaCronograma() {
     return;
   }
 
-  // Ordenar cronológicamente por fecha y hora
-  const ordenados = [...programaciones].sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
+  // Ordenar por Fecha y luego por Hora en minutos reales
+  const ordenados = [...programaciones].sort((a, b) => {
+    const compFecha = a.fecha.localeCompare(b.fecha);
+    if (compFecha !== 0) return compFecha;
+    return horaAMinutos(a.hora) - horaAMinutos(b.hora);
+  });
 
   ordenados.forEach(prog => {
     const tr = document.createElement('tr');
@@ -533,23 +541,13 @@ function renderTablaCronograma() {
         <span class="table-badge-auditorio">🏛️ ${prog.auditorioNombre}</span>
         <br><small style="color:var(--muted);">${prog.sede} · Turno #${prog.orden}</small>
       </td>
-      <td>
-        <small>${prog.terna.join(' · ')}</small>
-      </td>
-      <td>
-        <span class="badge badge-ok">${prog.estado}</span>
-      </td>
+      <td><small>${prog.terna.join(' · ')}</small></td>
+      <td><span class="badge badge-ok">${prog.estado}</span></td>
       <td>
         <div style="display:flex; gap:6px;">
-          <button class="btn btn-secondary" style="font-size:12px; padding:4px 8px;" onclick="abrirModalCitacion('${prog.id}')">
-            📜 Presentación
-          </button>
-          <button class="btn btn-primary" style="font-size:12px; padding:4px 8px;" onclick="abrirModalReprogramar('${prog.id}')">
-            🔄 Reprogramar
-          </button>
-          <button class="btn btn-danger" style="font-size:12px; padding:4px 8px;" onclick="confirmarLiberar('${prog.id}')">
-            ❌
-          </button>
+          <button class="btn btn-secondary" style="font-size:12px; padding:4px 8px;" onclick="abrirModalCitacion('${prog.id}')">📜 Presentación</button>
+          <button class="btn btn-primary" style="font-size:12px; padding:4px 8px;" onclick="abrirModalReprogramar('${prog.id}')">🔄 Reprogramar</button>
+          <button class="btn btn-danger" style="font-size:12px; padding:4px 8px;" onclick="confirmarLiberar('${prog.id}')">❌</button>
         </div>
       </td>
     `;
@@ -557,100 +555,122 @@ function renderTablaCronograma() {
   });
 }
 
-/* ============================================================
-   EVENTOS Y ACCIONES
-   ============================================================ */
 function configurarEventos() {
-  // Cambio en Auditorio -> recarga info y horarios del auditorio
-  document.getElementById('selectAuditorio').addEventListener('change', () => {
-    actualizarInfoAuditorioSeleccionado();
-    renderGrillaHorariosDisponibles();
-  });
+  const selAud = document.getElementById('selectAuditorio');
+  if (selAud) {
+    selAud.addEventListener('change', () => {
+      actualizarInfoAuditorioSeleccionado();
+      renderGrillaHorariosDisponibles();
+    });
+  }
 
-  // Cambio en Fecha -> recarga horarios disponibles de esa fecha
-  document.getElementById('inputFecha').addEventListener('change', () => {
-    renderGrillaHorariosDisponibles();
-  });
+  const inpFecha = document.getElementById('inputFecha');
+  if (inpFecha) {
+    inpFecha.addEventListener('change', () => {
+      renderGrillaHorariosDisponibles();
+    });
+  }
 
-  // Cambio en Cuarteto
-  document.getElementById('selectCuarteto').addEventListener('change', () => {
-    actualizarEstadoCuartetoSeleccionado();
-  });
+  const selCuarteto = document.getElementById('selectCuarteto');
+  if (selCuarteto) {
+    selCuarteto.addEventListener('change', () => {
+      actualizarEstadoCuartetoSeleccionado();
+    });
+  }
 
-  // Envío del formulario
-  document.getElementById('formProgramar').addEventListener('submit', (e) => {
-    e.preventDefault();
-    ejecutarProgramacionTurno();
-  });
+  const formProg = document.getElementById('formProgramar');
+  if (formProg) {
+    formProg.addEventListener('submit', (e) => {
+      e.preventDefault();
+      ejecutarProgramacionTurno();
+    });
+  }
 
-  // Botón para simular conflicto
-  document.getElementById('btnSimularConflicto').addEventListener('click', () => {
-    simularConflictoAuditorio();
-  });
+  const btnConflicto = document.getElementById('btnSimularConflicto');
+  if (btnConflicto) {
+    btnConflicto.addEventListener('click', () => {
+      simularConflictoAuditorio();
+    });
+  }
 
-  // Restablecer
-  document.getElementById('btnRestablecer').addEventListener('click', () => {
-    if (confirm('¿Restablecer los datos de cronograma y auditorios a los valores iniciales de prueba?')) {
-      programaciones = [...PROGRAMACIONES_INICIALES];
-      horarioSeleccionadoActual = null;
-      guardarDatos();
-      renderTodo();
-      mostrarAlertaExito('Datos de prueba restablecidos correctamente.');
-    }
-  });
+  const btnRestablecer = document.getElementById('btnRestablecer');
+  if (btnRestablecer) {
+    btnRestablecer.addEventListener('click', () => {
+      if (confirm('¿Restablecer los datos de cronograma y auditorios?')) {
+        programaciones = [];
+        horarioSeleccionadoActual = null;
+        guardarDatos();
+        inicializarSelectoresAuditorioYCuarteto().then(() => renderTodo());
+        mostrarAlertaExito('Datos de cronograma restablecidos.');
+      }
+    });
+  }
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') cerrarTodosLosModales();
   });
 }
 
-function ejecutarProgramacionTurno() {
-  const codigoCuarteto = document.getElementById('selectCuarteto').value;
-  const auditorioId = document.getElementById('selectAuditorio').value;
-  const fecha = document.getElementById('inputFecha').value;
-  const hora = horarioSeleccionadoActual;
-  const fase = document.getElementById('selectFase').value;
+/* ============================================================
+   PROGRAMAR Y LIBERAR CON ACTUALIZACIÓN REAL EN SUPABASE
+   ============================================================ */
+async function ejecutarProgramacionTurno() {
+  const selCuarteto = document.getElementById('selectCuarteto');
+  const selAud = document.getElementById('selectAuditorio');
+  const inpFecha = document.getElementById('inputFecha');
+  const selFase = document.getElementById('selectFase');
 
-  if (!codigoCuarteto) {
-    alert('⚠️ Por favor seleccione el cuarteto a programar.');
-    return;
-  }
-  if (!auditorioId) {
-    alert('⚠️ Por favor seleccione el auditorio.');
-    return;
-  }
-  if (!fecha) {
-    alert('⚠️ Por favor seleccione la fecha de presentación.');
-    return;
-  }
-  if (!hora) {
-    alert('⚠️ Por favor seleccione un horario disponible haciendo clic en la grilla de horarios.');
+  const codigoCuarteto = selCuarteto ? selCuarteto.value : '';
+  const auditorioId = selAud ? selAud.value : '';
+  const fecha = inpFecha ? inpFecha.value : '';
+  const hora = horarioSeleccionadoActual;
+  const fase = selFase ? selFase.value : 'Primera Eliminatoria';
+
+  if (!codigoCuarteto || !auditorioId || !fecha || !hora) {
+    alert('⚠️ Complete todos los campos requeridos y seleccione un horario libre de la grilla.');
     return;
   }
 
   const cuarteto = getCuartetoPorCodigo(codigoCuarteto);
   const auditorio = getAuditorioPorId(auditorioId);
 
-  // VALIDACIÓN 1: ¿El cuarteto ya tiene asignado un auditorio?
+  // Validaciones
   const progExistenteCuarteto = getProgramacionDeCuarteto(codigoCuarteto);
   if (progExistenteCuarteto) {
     mostrarModalError(
-      'Cuarteto ya asignado a un auditorio',
-      `El cuarteto <strong>${cuarteto.nombre}</strong> ya tiene asignado el <strong>${progExistenteCuarteto.auditorioNombre}</strong> el ${progExistenteCuarteto.fecha} a las ${progExistenteCuarteto.hora}.<br><br><strong>Regla de negocio:</strong> Cada cuarteto tiene un <strong>auditorio único</strong>. No se asigna un cuarteto en diferentes auditorios.`
+      'Cuarteto ya asignado',
+      `El cuarteto <strong>${cuarteto.nombre}</strong> ya tiene asignado el <strong>${progExistenteCuarteto.auditorioNombre}</strong> el ${progExistenteCuarteto.fecha} a las ${progExistenteCuarteto.hora}.`
     );
     return;
   }
 
-  // VALIDACIÓN 2: ¿El horario en este auditorio ya está ocupado? (RNF-15)
   const ocupanteActual = getTurnoOcupado(auditorioId, fecha, hora);
   if (ocupanteActual) {
     mostrarModalConflicto(auditorio.nombre, fecha, hora, ocupanteActual.cuartetoNombre, ocupanteActual.codigoCuarteto);
     return;
   }
 
-  // Guardado exitoso
+  // 1️⃣ UPDATE EN SUPABASE FILTRANDO POR codigo_cuarteto
+  const { error } = await supabase
+    .from('cuarteto')
+    .update({
+      sede: auditorio.sede,
+      auditorio: auditorio.nombre,
+      fecha_presentacion: fecha,
+      hora_presentacion: hora,
+      estado_presentacion: 'Programado'
+    })
+    .eq('codigo_cuarteto', cuarteto.codigo);
+
+  if (error) {
+    alert(`❌ Error al guardar en Supabase: ${error.message}`);
+    return;
+  }
+
+  // 2️⃣ Actualización en estado local
   const nuevoTurno = {
     id: `prog-${Date.now()}`,
+    cuartetoId: cuarteto.id,
     codigoCuarteto: cuarteto.codigo,
     cuartetoNombre: cuarteto.nombre,
     fase: fase,
@@ -669,62 +689,74 @@ function ejecutarProgramacionTurno() {
   programaciones.push(nuevoTurno);
   horarioSeleccionadoActual = null;
   guardarDatos();
+
+  await inicializarSelectoresAuditorioYCuarteto();
   renderTodo();
+
+  if (typeof registrarCorreoSimulado === 'function') {
+    registrarCorreoSimulado(
+      'representante@cons.pe, docente@cons.pe',
+      `Citación Oficial Concurso: ${cuarteto.nombre}`,
+      `Se ha programado su turno para el ${fecha} a las ${hora} hrs en el ${auditorio.nombre}.`,
+      'RF-31 / RF-34'
+    );
+  }
 
   mostrarModalTurnoProgramado(nuevoTurno);
 }
 
-function simularConflictoAuditorio() {
-  const audId = document.getElementById('selectAuditorio').value || 'aud-principal';
-  const fecha = document.getElementById('inputFecha').value || '2026-10-15';
-  const aud = getAuditorioPorId(audId);
-
-  // Buscar un turno ocupado para simular el conflicto
-  const ocupado = programaciones.find(p => p.auditorioId === audId && p.fecha === fecha) || programaciones[0];
-
-  mostrarModalConflicto(
-    ocupado.auditorioNombre,
-    ocupado.fecha,
-    ocupado.hora,
-    ocupado.cuartetoNombre,
-    ocupado.codigoCuarteto
-  );
-}
-
-function confirmarLiberar(progId) {
+async function confirmarLiberar(progId) {
   const prog = programaciones.find(p => p.id === progId);
   if (!prog) return;
 
-  if (confirm(`¿Liberar el turno en ${prog.auditorioNombre} (${prog.fecha} · ${prog.hora}) asignado a ${prog.cuartetoNombre}?\n\nEl horario volverá a estar disponible de inmediato para que otro cuarteto lo pueda escoger.`)) {
+  if (confirm(`¿Liberar el turno en ${prog.auditorioNombre} (${prog.fecha} · ${prog.hora}) asignado a ${prog.cuartetoNombre}?`)) {
+    
+    // Actualización segura en Supabase usando codigo_cuarteto
+    if (prog.codigoCuarteto) {
+      const { error } = await supabase
+        .from('cuarteto')
+        .update({
+          sede: null,
+          auditorio: null,
+          fecha_presentacion: null,
+          hora_presentacion: null,
+          estado_presentacion: 'Pendiente'
+        })
+        .eq('codigo_cuarteto', prog.codigoCuarteto);
+
+      if (error) console.warn('Advertencia al liberar en Supabase:', error.message);
+    }
+
     programaciones = programaciones.filter(p => p.id !== progId);
     guardarDatos();
+    await inicializarSelectoresAuditorioYCuarteto();
     renderTodo();
-    mostrarAlertaExito(`El turno en ${prog.auditorioNombre} (${prog.hora}) ha sido liberado y ya está disponible.`);
+    mostrarAlertaExito(`El turno en ${prog.auditorioNombre} (${prog.hora}) ha sido liberado.`);
   }
 }
 
 /* ============================================================
-   MODALES
+   MODALES Y UTILIDADES DE INTERFAZ
    ============================================================ */
 function abrirModalCitacion(progId) {
   const prog = programaciones.find(p => p.id === progId);
   if (!prog) return;
-
   const modal = document.getElementById('modalCitacion');
-  document.getElementById('citacionCuartetoNombre').textContent = prog.cuartetoNombre;
-  document.getElementById('citacionCodigo').textContent = prog.codigoCuarteto;
-  document.getElementById('citacionFecha').textContent = prog.fecha;
-  document.getElementById('citacionHora').textContent = prog.hora;
-  document.getElementById('citacionSede').textContent = prog.sede;
-  document.getElementById('citacionAuditorio').textContent = `${prog.auditorioNombre} (ÚNICO)`;
-  document.getElementById('citacionOrden').textContent = `#${prog.orden}`;
-  document.getElementById('citacionObras').textContent = prog.obras;
-  document.getElementById('citacionJurados').textContent = prog.terna.join(' · ');
+  if (!modal) return;
+
+  const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setT('citacionCuartetoNombre', prog.cuartetoNombre);
+  setT('citacionCodigo', prog.codigoCuarteto);
+  setT('citacionFecha', prog.fecha);
+  setT('citacionHora', prog.hora);
+  setT('citacionSede', prog.sede);
+  setT('citacionAuditorio', `${prog.auditorioNombre} (ÚNICO)`);
+  setT('citacionOrden', `#${prog.orden}`);
+  setT('citacionObras', prog.obras);
+  setT('citacionJurados', prog.terna.join(' · '));
 
   modal.style.display = 'flex';
 }
-
-let turnoEnReprogramacionId = null;
 
 function abrirModalReprogramar(progId) {
   const prog = programaciones.find(p => p.id === progId);
@@ -732,36 +764,47 @@ function abrirModalReprogramar(progId) {
 
   turnoEnReprogramacionId = progId;
   const modal = document.getElementById('modalReprogramar');
+  if (!modal) return;
 
-  document.getElementById('reprogCuarteto').textContent = `${prog.cuartetoNombre} (${prog.codigoCuarteto})`;
-  document.getElementById('reprogTurnoActual').textContent = `${prog.fecha} · ${prog.hora} · ${prog.auditorioNombre}`;
+  const elCuarteto = document.getElementById('reprogCuarteto');
+  const elTurnoActual = document.getElementById('reprogTurnoActual');
+  const inpNuevaFecha = document.getElementById('reprogNuevaFecha');
+  const inpMotivo = document.getElementById('reprogMotivo');
 
-  document.getElementById('reprogNuevaFecha').value = prog.fecha;
-  document.getElementById('reprogMotivo').value = '';
+  if (elCuarteto) elCuarteto.textContent = `${prog.cuartetoNombre} (${prog.codigoCuarteto})`;
+  if (elTurnoActual) elTurnoActual.textContent = `${prog.fecha} · ${prog.hora} · ${prog.auditorioNombre}`;
+  if (inpNuevaFecha) inpNuevaFecha.value = prog.fecha;
+  if (inpMotivo) inpMotivo.value = '';
 
-  // Select de auditorio
   const selectAud = document.getElementById('reprogNuevoAuditorio');
-  selectAud.innerHTML = '';
-  auditorios.forEach(aud => {
-    const opt = document.createElement('option');
-    opt.value = aud.id;
-    opt.textContent = `${aud.nombre} (${aud.sede})`;
-    if (aud.id === prog.auditorioId) opt.selected = true;
-    selectAud.appendChild(opt);
-  });
+  if (selectAud) {
+    selectAud.innerHTML = '';
+    auditorios.forEach(aud => {
+      const opt = document.createElement('option');
+      opt.value = aud.id;
+      opt.textContent = `${aud.nombre} (${aud.sede})`;
+      if (aud.id === prog.auditorioId || aud.nombre === prog.auditorioNombre) opt.selected = true;
+      selectAud.appendChild(opt);
+    });
+    selectAud.onchange = actualizarHorariosReprogramacion;
+  }
+
+  if (inpNuevaFecha) inpNuevaFecha.onchange = actualizarHorariosReprogramacion;
 
   actualizarHorariosReprogramacion();
-  selectAud.onchange = actualizarHorariosReprogramacion;
-  document.getElementById('reprogNuevaFecha').onchange = actualizarHorariosReprogramacion;
-
   modal.style.display = 'flex';
 }
 
 function actualizarHorariosReprogramacion() {
   const prog = programaciones.find(p => p.id === turnoEnReprogramacionId);
-  const audId = document.getElementById('reprogNuevoAuditorio').value;
-  const fecha = document.getElementById('reprogNuevaFecha').value;
+  const selAud = document.getElementById('reprogNuevoAuditorio');
+  const inpFecha = document.getElementById('reprogNuevaFecha');
   const selectHora = document.getElementById('reprogNuevaHora');
+
+  if (!selAud || !inpFecha || !selectHora) return;
+
+  const audId = selAud.value;
+  const fecha = inpFecha.value;
 
   selectHora.innerHTML = '';
   BLOQUES_HORARIOS.forEach(hora => {
@@ -769,12 +812,12 @@ function actualizarHorariosReprogramacion() {
     const opt = document.createElement('option');
     opt.value = hora;
 
-    if (prog && prog.auditorioId === audId && prog.fecha === fecha && prog.hora === hora) {
+    if (prog && (prog.auditorioId === audId || prog.auditorioNombre === audId) && prog.fecha === fecha && prog.hora === hora) {
       opt.textContent = `📍 ${hora} (Horario actual del cuarteto)`;
       opt.selected = true;
     } else if (ocupante) {
       opt.disabled = true;
-      opt.textContent = `🔒 ${hora} — Ocupado por ${ocupante.cuartetoNombre} (No disponible)`;
+      opt.textContent = `🔒 ${hora} — Ocupado por ${ocupante.cuartetoNombre}`;
     } else {
       opt.textContent = `🟢 ${hora} — Disponible`;
     }
@@ -782,32 +825,53 @@ function actualizarHorariosReprogramacion() {
   });
 }
 
-function ejecutarReprogramacion() {
+async function ejecutarReprogramacion() {
   if (!turnoEnReprogramacionId) return;
-
   const prog = programaciones.find(p => p.id === turnoEnReprogramacionId);
   if (!prog) return;
 
-  const nuevaFecha = document.getElementById('reprogNuevaFecha').value;
-  const nuevaHora = document.getElementById('reprogNuevaHora').value;
-  const nuevoAudId = document.getElementById('reprogNuevoAuditorio').value;
-  const motivo = document.getElementById('reprogMotivo').value.trim();
+  const inpFecha = document.getElementById('reprogNuevaFecha');
+  const selHora = document.getElementById('reprogNuevaHora');
+  const selAud = document.getElementById('reprogNuevoAuditorio');
+  const inpMotivo = document.getElementById('reprogMotivo');
+
+  const nuevaFecha = inpFecha ? inpFecha.value : prog.fecha;
+  const nuevaHora = selHora ? selHora.value : prog.hora;
+  const nuevoAudId = selAud ? selAud.value : prog.auditorioId;
+  const motivo = inpMotivo ? inpMotivo.value.trim() : '';
 
   if (!motivo) {
-    alert('⚠️ El motivo de reprogramación es obligatorio (RNF-17 / RF-29)');
+    alert('⚠️ El motivo de reprogramación es obligatorio.');
     return;
   }
 
-  // Verificar que el horario no esté ocupado por otro
   const ocupante = getTurnoOcupado(nuevoAudId, nuevaFecha, nuevaHora);
   if (ocupante && ocupante.id !== prog.id) {
     alert(`⚠️ El horario ${nuevaHora} en ese auditorio ya está ocupado por ${ocupante.cuartetoNombre}`);
     return;
   }
 
+  const nuevoAud = getAuditorioPorId(nuevoAudId);
+
+  // UPDATE EN SUPABASE FILTRANDO POR codigo_cuarteto
+  const { error } = await supabase
+    .from('cuarteto')
+    .update({
+      sede: nuevoAud.sede,
+      auditorio: nuevoAud.nombre,
+      fecha_presentacion: nuevaFecha,
+      hora_presentacion: nuevaHora,
+      estado_presentacion: 'Programado'
+    })
+    .eq('codigo_cuarteto', prog.codigoCuarteto);
+
+  if (error) {
+    alert(`❌ Error al reprogramar en Supabase: ${error.message}`);
+    return;
+  }
+
   const audAnterior = prog.auditorioNombre;
   const horaAnterior = prog.hora;
-  const nuevoAud = getAuditorioPorId(nuevoAudId);
 
   prog.fecha = nuevaFecha;
   prog.hora = nuevaHora;
@@ -815,18 +879,37 @@ function ejecutarReprogramacion() {
   prog.auditorioNombre = nuevoAud.nombre;
   prog.sede = nuevoAud.sede;
   prog.terna = nuevoAud.terna;
-  prog.trazabilidad = `Reprogramado por admin@cons.pe el ${new Date().toLocaleString('es-PE')} · Motivo: ${motivo}`;
+  prog.trazabilidad = `Reprogramado el ${new Date().toLocaleString('es-PE')} · Motivo: ${motivo}`;
 
   guardarDatos();
   cerrarTodosLosModales();
+  await inicializarSelectoresAuditorioYCuarteto();
   renderTodo();
 
   mostrarModalReprogramadoExitoso(prog.cuartetoNombre, `${audAnterior} (${horaAnterior})`, `${nuevoAud.nombre} (${nuevaHora})`, nuevaFecha, nuevaHora, motivo);
 }
 
+function simularConflictoAuditorio() {
+  const selAud = document.getElementById('selectAuditorio');
+  const inpFecha = document.getElementById('inputFecha');
+
+  const audId = selAud ? selAud.value : 'aud-principal';
+  const fecha = inpFecha ? inpFecha.value : '2026-10-15';
+  const aud = getAuditorioPorId(audId);
+
+  const ocupado = programaciones.find(p => (p.auditorioId === audId || p.auditorioNombre === aud.nombre) && p.fecha === fecha) || programaciones[0];
+
+  if (ocupado) {
+    mostrarModalConflicto(ocupado.auditorioNombre, ocupado.fecha, ocupado.hora, ocupado.cuartetoNombre, ocupado.codigoCuarteto);
+  }
+}
+
 function mostrarModalTurnoProgramado(turno) {
   const modal = document.getElementById('modalTurnoProgramado');
-  document.getElementById('tpDetalle').innerHTML = `
+  const det = document.getElementById('tpDetalle');
+  if (!modal || !det) return;
+
+  det.innerHTML = `
     <div style="font-size:14px; line-height:1.7;">
       <strong>Cuarteto:</strong> ${turno.cuartetoNombre} (${turno.codigoCuarteto})<br>
       <strong>Auditorio Asignado:</strong> <strong>${turno.auditorioNombre} (ÚNICO)</strong><br>
@@ -840,13 +923,13 @@ function mostrarModalTurnoProgramado(turno) {
 
 function mostrarModalConflicto(auditorioNombre, fecha, hora, cuartetoOcupante, codigoOcupante) {
   const modal = document.getElementById('modalConflicto');
-  document.getElementById('conflictoDetalle').innerHTML = `
+  const det = document.getElementById('conflictoDetalle');
+  if (!modal || !det) return;
+
+  det.innerHTML = `
     El horario <strong>${hora}</strong> en el <strong>${auditorioNombre}</strong> (fecha: ${fecha}) ya se encuentra asignado y bloqueado para:
     <div style="margin-top:10px; padding:10px; background:#fee2e2; border-radius:6px; font-weight:700; color:#991b1b;">
       🎻 ${cuartetoOcupante} (${codigoOcupante})
-    </div>
-    <div style="margin-top:10px; font-size:13px; color:#475569;">
-      <strong>RNF-15:</strong> Bloqueo estricto de doble asignación de auditorio y horario. Ningún cuarteto puede ocupar un horario que ya fue escogido por otro cuarteto.
     </div>
   `;
   modal.style.display = 'flex';
@@ -854,16 +937,16 @@ function mostrarModalConflicto(auditorioNombre, fecha, hora, cuartetoOcupante, c
 
 function mostrarModalReprogramadoExitoso(cuarteto, ant, nuevo, fecha, hora, motivo) {
   const modal = document.getElementById('modalReprogramadoExitoso');
-  document.getElementById('reprogExitoDetalle').innerHTML = `
+  const det = document.getElementById('reprogExitoDetalle');
+  if (!modal || !det) return;
+
+  det.innerHTML = `
     <div style="font-size:14px; line-height:1.6;">
       <strong>Cuarteto:</strong> ${cuarteto}<br>
       <strong>Turno Anterior:</strong> <span style="text-decoration:line-through; color:var(--muted);">${ant}</span> (Liberado)<br>
       <strong>Nuevo Turno:</strong> <strong style="color:var(--primary);">${nuevo}</strong> (Guardado y Bloqueado)<br>
       <strong>Fecha:</strong> ${fecha}<br>
-      <strong>Motivo registrado (RNF-17):</strong> ${motivo}<br>
-      <div style="margin-top:10px; font-size:12px; color:var(--muted); border-top:1px dashed #cbd5e1; padding-top:6px;">
-        ✉️ RF-30: Correo oficial de reprogramación enviado al representante y profesor responsable.
-      </div>
+      <strong>Motivo registrado (RNF-17):</strong> ${motivo}
     </div>
   `;
   modal.style.display = 'flex';
@@ -887,16 +970,14 @@ function mostrarAlertaExito(msg) {
 }
 
 function cerrarModal(id) {
-  document.getElementById(id).style.display = 'none';
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
 }
 
 function cerrarTodosLosModales() {
   document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
 }
 
-/* ============================================================
-   MODAL DE NÓMINA OFICIAL DE 12 JURADOS (S5)
-   ============================================================ */
 function abrirModalCatalogoJurados() {
   const modal = document.getElementById('modalCatalogoJurados');
   if (!modal) return;
@@ -924,3 +1005,14 @@ function renderTablaCatalogoJurados() {
     </tr>
   `).join('');
 }
+
+// Exportación global de funciones inline
+window.seleccionarAuditorioDesdeTarjeta = seleccionarAuditorioDesdeTarjeta;
+window.cerrarSesion = cerrarSesion;
+window.abrirModalCitacion = abrirModalCitacion;
+window.abrirModalReprogramar = abrirModalReprogramar;
+window.confirmarLiberar = confirmarLiberar;
+window.ejecutarReprogramacion = ejecutarReprogramacion;
+window.cerrarModal = cerrarModal;
+window.abrirModalCatalogoJurados = abrirModalCatalogoJurados;
+window.cerrarModalCatalogoJurados = cerrarModalCatalogoJurados;
