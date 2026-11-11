@@ -60,3 +60,22 @@ export async function obtenerUltimoCuartetoConDetalles() {
     return { success: false, message: error.message };
   }
 }
+
+/**
+ * Obtiene únicamente los cuartetos en estado 'Inscrito' (aprobados por el profesor)
+ * para la evaluación en el módulo del Jurado.
+ */
+export async function obtenerCuartetosParaJuradoBD() {
+  try {
+    const { data, error } = await supabase
+      .from('cuarteto')
+      .select('*')
+      .eq('estado_inscripcion', 'Inscrito');
+
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Error al consultar cuartetos inscritos para el jurado:', err);
+    return [];
+  }
+}

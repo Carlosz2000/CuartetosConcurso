@@ -1,7 +1,50 @@
 // js/services/profesorService.js
 import { supabase } from '../../config/supabase.js';
 
-//Consulta en Supabase todos los usuarios con rol de Profesor o Jurado que estén activos (estado = true)
+/**
+ * Consulta en Supabase los cuartetos asignados al profesor responsable en sesión.
+ * @param {string} idProfesor - UUID del profesor (id_profesor_responsable)
+ */
+export async function obtenerCuartetosPorProfesorBD(idProfesor) {
+  try {
+    const { data, error } = await supabase
+      .from('cuarteto')
+      .select('*')
+      .eq('id_profesor_responsable', idProfesor);
+
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Error al obtener cuartetos del profesor desde Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Actualiza el campo estado_inscripcion en la tabla 'cuarteto'.
+ * @param {number|string} idCuarteto - ID único del cuarteto (id_cuarteto)
+ * @param {'Inscrito' | 'Rechazado' | 'Observado'} nuevoEstado - Estado a asignar
+ */
+export async function cambiarEstadoInscripcionBD(idCuarteto, nuevoEstado) {
+  try {
+    const { data, error } = await supabase
+      .from('cuarteto')
+      .update({ estado_inscripcion: nuevoEstado })
+      .eq('id_cuarteto', idCuarteto)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Error al actualizar el estado del cuarteto en Supabase:', err);
+    throw err;
+  }
+}
+
+/**
+ * Consulta en Supabase todos los usuarios con rol de Profesor o Jurado activos (estado = true)
+ */
 export async function obtenerDocentesHabilitadosBD() {
   try {
     const { data: usuarios, error } = await supabase

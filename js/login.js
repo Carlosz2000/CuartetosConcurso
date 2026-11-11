@@ -65,24 +65,30 @@ const destinos = {
 
 // Obtener perfil y redireccionar
 async function redirigirSegunRol(authUserId) {
-
     const perfil = await obtenerPerfilUsuario(authUserId);
 
-    const destino = destinos[perfil.rol];
-
-    if (!destino) {
-        throw new Error('No existe una página configurada para tu rol.');
+    if (!perfil) {
+        throw new Error('No se pudo encontrar la información del perfil del usuario.');
     }
 
-    // Guardar información básica para la interfaz
+    // 1. Declarar correctamente la variable del rol antes de consultar el objeto de destinos
+    const rol = (perfil.rol || '').toLowerCase();
+    const destino = destinos[rol];
+
+    if (!destino) {
+        throw new Error(`No existe una página configurada para el rol '${perfil.rol}'.`);
+    }
+
+    // 2. Guardar en la sesión con las propiedades de ID esperadas
     sessionStorage.setItem('competia_session', JSON.stringify({
-        id: perfil.id,
-        nombre: perfil.nombre,
-        email: perfil.email,
-        rol: perfil.rol
+        id: perfil.id || authUserId,
+        id_usuario: perfil.id_usuario || perfil.id || authUserId,
+        nombre: perfil.nombre || `${perfil.nombres || ''} ${perfil.apellidos || ''}`.trim(),
+        email: perfil.email || perfil.correo_institucional,
+        rol: rol
     }));
 
-    // Redireccionar
+    // 3. Redireccionar al panel
     window.location.href = destino;
 }
 

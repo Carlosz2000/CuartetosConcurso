@@ -1,21 +1,22 @@
 /* ============================================================
-   ROL ADMINISTRADOR · Panel Integral (S1, S3, S5, S6-sup, S7, BD)
+   ROL ADMINISTRADOR · Panel Integral (S1, S4, S5, S6, S7, BD)
    HU-01 a HU-22 · RF-01 a RF-54
    ============================================================ */
+
+import { requireRol } from './core/session.js';
+import { obtenerObrasObligatoriasBD, registrarObraObligatoriaBD, segundosAMmSs } from './services/obraService.js';
+import { obtenerDocentesHabilitadosBD } from './services/profesorService.js';
+import { supabase } from '../config/supabase.js';
 
 let adminSesion = null;
 let activeAdminTab = 's1';
 
 /* ---------- Filtros específicos de S6 y S7 ---------- */
 let filtroAuditorioAdminS6 = 'TODOS';
-let filtroEtiquetaAdminS6 = 'C';
 
 document.addEventListener('DOMContentLoaded', () => {
   adminSesion = requireRol('administrador');
   if (!adminSesion) return;
-
-  cargarEstadoSubsistemas();
-  guardarTodoSubsistemas();
 
   const elCred = document.getElementById('adminCredencial');
   if (elCred) elCred.textContent = `${adminSesion.nombre} · ${adminSesion.rol.toUpperCase()}`;
@@ -34,25 +35,57 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ---------- Render principal por tab ---------- */
-function renderAdminTab() {
+async function renderAdminTab() {
   const cont = document.getElementById('adminMainContent');
   if (!cont) return;
 
   switch (activeAdminTab) {
-    case 's1': cont.innerHTML = renderS1(); bindS1(); break;
-    case 's4': cont.innerHTML = renderS4(); bindS4(); break;  
-    case 's5': cont.innerHTML = renderS5(); bindS5(); break;
-    case 's6': cont.innerHTML = renderS6(); bindS6(); break;
-    case 's7': cont.innerHTML = renderS7(); bindS7(); break;
+    case 's1': cont.innerHTML = await renderS1(); bindS1(); break;
+    case 's4': cont.innerHTML = await renderS4(); bindS4(); break;  
+    case 's5': cont.innerHTML = await renderS5(); bindS5(); break;
+    case 's6': cont.innerHTML = await renderS6(); bindS6(); break;
+    case 's7': cont.innerHTML = await renderS7(); bindS7(); break;
   }
 }
 
 /* ============================================================================
-   S1 · CATÁLOGO DE OBRAS (HU-01, HU-02)
+   HELPERS DB · ESTADO GLOBAL DE EDICIÓN Y FASES (SUPABASE)
    ============================================================================ */
-function renderS1() {
-  const bloqueado = s7Estado.edicionArchivada;
-  const obras = [...s1Obras].sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'));
+async function obtenerEstadoConcursoBD() {
+  const { data } = await supabase
+    .from('configuracion_concurso')
+    .select('*')
+    .eq('id_edicion', 2026)
+    .maybeSingle();
+
+  if (data) return data;
+
+  return {
+    id_edicion: 2026,
+    fase_eliminatoria_estado: 'En Curso',
+    fase_final_estado: 'En Curso',
+    cuadro_publicado: false,
+    edicion_archivada: false,
+    fecha_archivado: null,
+    ganadores: null
+  };
+}
+
+async function guardarEstadoConcursoBD(cambios) {
+  const { error } = await supabase
+    .from('configuracion_concurso')
+    .upsert([{ id_edicion: 2026, ...cambios }]);
+  if (error) console.error('Error al guardar estado de concurso en Supabase:', error.message);
+}
+
+/* ============================================================================
+   S1 · CATÁLOGO DE OBRAS (HU-01) - SUPABASE
+   ============================================================================ */
+async function renderS1() {
+  const estadoConcurso = await obtenerEstadoConcursoBD();
+  const bloqueado = estadoConcurso.edicion_archivada;
+  const obras = await obtenerObrasObligatoriasBD();
+
   return `
     <div class="card">
       <div class="ficha-header">
@@ -76,8 +109,8 @@ function renderS1() {
               <input type="text" id="s1Compositor" placeholder="Ej: Maurice Ravel" ${bloqueado ? 'disabled' : ''}>
             </div>
             <div class="form-row">
-              <label>Duración Estimada</label>
-              <input type="text" id="s1Duracion" placeholder="Ej: 8:00" value="8:00" ${bloqueado ? 'disabled' : ''}>
+              <label>Duración Estimada (mm:ss)</label>
+              <input type="text" id="s1Duracion" placeholder="Ej: 5:15" value="5:15" ${bloqueado ? 'disabled' : ''}>
             </div>
             <div id="s1Feedback" style="margin-bottom:12px;"></div>
             <button type="submit" class="btn btn-primary" ${bloqueado ? 'disabled' : ''}>
@@ -92,19 +125,17 @@ function renderS1() {
             <table class="table">
               <thead><tr><th>Título</th><th>Compositor</th><th>Duración</th><th>Estado</th></tr></thead>
               <tbody>
-                ${obras.map(o => `
+                ${obras.length === 0 ? '<tr><td colspan="4" style="text-align:center;">No hay obras obligatorias registradas.</td></tr>' : 
+                  obras.map(o => `
                   <tr>
                     <td><strong>${o.titulo}</strong></td>
-                    <td>${o.compositor}</td>
-                    <td><span class="badge badge-code">${o.duracion}</span></td>
-                    <td><span class="badge badge-ok">Disponible en S2</span></td>
+                    <td>${o.compositor || '—'}</td>
+                    <td><span class="badge badge-code">${segundosAMmSs(o.duracion_estimada)} min</span></td>
+                    <td><span class="badge badge-ok">Activa</span></td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
-          </div>
-          <div class="hint" style="margin-top:8px;">
-            🔗 <strong>RF-03 / RF-05:</strong> Toda obra agregada aquí aparece automáticamente en el menú desplegable del Paso 4 (Repertorio) de la Inscripción.
           </div>
         </div>
       </div>
@@ -115,32 +146,175 @@ function renderS1() {
 function bindS1() {
   const form = document.getElementById('formS1Obra');
   if (!form) return;
-  form.addEventListener('submit', e => {
+
+  form.addEventListener('submit', async e => {
     e.preventDefault();
-    const titulo = document.getElementById('s1Titulo').value.trim();
-    const compositor = document.getElementById('s1Compositor').value.trim();
-    const duracion = document.getElementById('s1Duracion').value.trim() || '8:00';
+    const titulo = document.getElementById('s1Titulo').value;
+    const compositor = document.getElementById('s1Compositor').value;
+    const duracion = document.getElementById('s1Duracion').value;
     const fb = document.getElementById('s1Feedback');
 
-    if (!titulo) { fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] RF-02:</strong> El Título es obligatorio.</div></div>'; return; }
-    if (!compositor) { fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] CA3 / RF-02:</strong> El Compositor es obligatorio.</div></div>'; return; }
-    if (s1Obras.some(o => o.titulo.toLowerCase() === titulo.toLowerCase())) {
-      fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] RF-04:</strong> Ya existe una obra con ese título.</div></div>'; return;
+    try {
+      await registrarObraObligatoriaBD(titulo, compositor, duracion);
+      showToast(`✅ Obra "${titulo}" agregada al catálogo.`, 'ok');
+      await renderAdminTab();
+    } catch (err) {
+      fb.innerHTML = `<div class="alert alert-danger"><div>⚠️ ${err.message}</div></div>`;
     }
-
-    s1Obras.push({ id: Date.now(), titulo, compositor, duracion });
-    guardarTodoSubsistemas();
-    showToast(`✅ Obra "${titulo}" agregada al catálogo (HU-01).`, 'ok');
-    renderAdminTab();
   });
 }
 
+/* ============================================================================
+   S4 · PROGRAMACIÓN Y REPROGRAMACIÓN DE AUDITORIOS (HU-11, HU-13) - SUPABASE
+   ============================================================================ */
+async function renderS4() {
+  const estadoConcurso = await obtenerEstadoConcursoBD();
+  const bloqueado = estadoConcurso.edicion_archivada;
+
+  const { data: cuartetosInscritos } = await supabase
+    .from('cuarteto')
+    .select('*')
+    .eq('estado_inscripcion', 'Inscrito');
+
+  const lista = cuartetosInscritos || [];
+
+  return `
+    <div class="card">
+      <div class="ficha-header">
+        <div>
+          <h2>📅 Subsistema 4 · Programación y Reprogramación de Turnos</h2>
+          <p class="subtitle">HU-11 · HU-13 · RF-29 a RF-34 · Asignación de Sede, Auditorio, Fecha y Hora sin cruces</p>
+        </div>
+        <span class="badge badge-ok">${lista.length} Cuartetos Aptos</span>
+      </div>
+
+      <div id="s4Feedback" style="margin-top:10px;"></div>
+
+      <div class="table-container" style="margin-top:16px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Cuarteto</th>
+              <th>Sede</th>
+              <th>Auditorio</th>
+              <th>Fecha</th>
+              <th>Hora Inicio</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lista.length === 0 ? `
+              <tr><td colspan="6" style="text-align:center;">No hay cuartetos en estado 'Inscrito' listos para programar.</td></tr>
+            ` : lista.map(c => `
+              <tr>
+                <td><strong>${c.nombre_cuarteto}</strong><br><small>${c.codigo_cuarteto || ('#' + c.id_cuarteto)}</small></td>
+                <td>
+                  <input type="text" id="sede_${c.id_cuarteto}" value="${c.sede || 'Sede Central'}" style="width:110px; padding:4px;" ${bloqueado ? 'disabled' : ''}>
+                </td>
+                <td>
+                  <select id="auditorio_${c.id_cuarteto}" style="padding:4px;" ${bloqueado ? 'disabled' : ''}>
+                    <option value="Auditorio Principal" ${c.auditorio === 'Auditorio Principal' ? 'selected' : ''}>Auditorio Principal</option>
+                    <option value="Auditorio B — Sala Beethoven" ${c.auditorio === 'Auditorio B — Sala Beethoven' ? 'selected' : ''}>Auditorio B</option>
+                    <option value="Auditorio C — Sala Mozart" ${c.auditorio === 'Auditorio C — Sala Mozart' ? 'selected' : ''}>Auditorio C</option>
+                  </select>
+                </td>
+                <td>
+                  <input type="date" id="fecha_${c.id_cuarteto}" value="${c.fecha_presentacion || '2026-11-20'}" style="padding:4px;" ${bloqueado ? 'disabled' : ''}>
+                </td>
+                <td>
+                  <input type="time" id="hora_${c.id_cuarteto}" value="${c.hora_presentacion || '10:00'}" style="padding:4px;" ${bloqueado ? 'disabled' : ''}>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-primary btn-guardar-turno" data-id="${c.id_cuarteto}" style="padding:4px 8px; font-size:12px;" ${bloqueado ? 'disabled' : ''}>
+                    💾 Programar Turno
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function bindS4() {
+  document.querySelectorAll('.btn-guardar-turno').forEach(btn => {
+    btn.addEventListener('click', async function () {
+      const idCuarteto = this.dataset.id;
+      const sede = document.getElementById(`sede_${idCuarteto}`).value;
+      const auditorio = document.getElementById(`auditorio_${idCuarteto}`).value;
+      const fecha = document.getElementById(`fecha_${idCuarteto}`).value;
+      const hora = document.getElementById(`hora_${idCuarteto}`).value;
+      const fb = document.getElementById('s4Feedback');
+
+      // RF-30: Validación de traslapes en un mismo auditorio, fecha y hora
+      const { data: conflicto } = await supabase
+        .from('cuarteto')
+        .select('id_cuarteto, nombre_cuarteto')
+        .eq('auditorio', auditorio)
+        .eq('fecha_presentacion', fecha)
+        .eq('hora_presentacion', hora)
+        .neq('id_cuarteto', idCuarteto)
+        .maybeSingle();
+
+      if (conflicto) {
+        fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Conflicto de Horario (HU-11 / RF-30):</strong> El <b>${auditorio}</b> ya está ocupado el ${fecha} a las ${hora} por el cuarteto "${conflicto.nombre_cuarteto}".</div></div>`;
+        return;
+      }
+
+      // Actualizar la programación en Supabase
+      const { error } = await supabase
+        .from('cuarteto')
+        .update({
+          sede: sede,
+          auditorio: auditorio,
+          fecha_presentacion: fecha,
+          hora_presentacion: hora
+        })
+        .eq('id_cuarteto', idCuarteto);
+
+      if (error) {
+        fb.innerHTML = `<div class="alert alert-danger"><div>Error al guardar turno: ${error.message}</div></div>`;
+      } else {
+        const { data: datosCuarteto } = await supabase
+          .from('cuarteto')
+          .select('nombre_cuarteto, usuario!id_profesor_responsable(correo_institucional, nombres, apellidos)')
+          .eq('id_cuarteto', idCuarteto)
+          .single();
+
+        const correoDocente = datosCuarteto?.usuario?.correo_institucional || 'docente@conservatorio.edu.pe';
+
+        if (typeof registrarCorreoSimulado === 'function') {
+          registrarCorreoSimulado(
+            `${correoDocente}, representante@conservatorio.edu.pe`,
+            `Citación Oficial Concurso: ${datosCuarteto?.nombre_cuarteto || ('Cuarteto #' + idCuarteto)}`,
+            `Se ha programado/reprogramado su turno para el ${fecha} a las ${hora} hrs en el ${auditorio} (${sede}).`,
+            'RF-31 / RF-34'
+          );
+        }
+
+        fb.innerHTML = `<div class="alert alert-success"><div>✅ Turno guardado en Supabase y citación oficial emitida por correo al docente y representante (RF-31/34).</div></div>`;
+        showToast(`📅 Turno actualizado para el cuarteto #${idCuarteto}`, 'ok');
+      }
+    });
+  });
+}
 
 /* ============================================================================
-   S5 · GESTIÓN DE JURADOS Y ASIGNACIÓN INCOMPATIBLE (HU-14, HU-15)
+   S5 · GESTIÓN DE JURADOS Y ASIGNACIÓN INCOMPATIBLE (HU-14, HU-15) - SUPABASE
    ============================================================================ */
-function renderS5() {
-  const bloqueado = s7Estado.edicionArchivada;
+async function renderS5() {
+  const estadoConcurso = await obtenerEstadoConcursoBD();
+  const bloqueado = estadoConcurso.edicion_archivada;
+
+  const { data: juradosBD } = await supabase
+    .from('usuario')
+    .select('*')
+    .ilike('rol', 'jurado');
+
+  const listaJurados = juradosBD || [];
+
   return `
     <div class="card">
       <div class="ficha-header">
@@ -148,7 +322,7 @@ function renderS5() {
           <h2>👨‍⚖️ Subsistema 5 · Gestión de Jurados y Control de Incompatibilidad</h2>
           <p class="subtitle">HU-14 · HU-15 · RF-35 a RF-38</p>
         </div>
-        <span class="badge badge-ok">${s5Jurados.length} Jurados Acreditados</span>
+        <span class="badge badge-ok">${listaJurados.length} Jurados Registrados</span>
       </div>
 
       <div class="grid-2" style="margin-top:16px; align-items:start;">
@@ -197,19 +371,19 @@ function renderS5() {
             <div class="form-row">
               <label>Jurado A <span class="req">*</span></label>
               <select id="s5JuradoA" ${bloqueado ? 'disabled' : ''}>
-                ${s5Jurados.map(j => `<option value="${j.nombre}">${j.nombre} (${j.especialidad})</option>`).join('')}
+                ${listaJurados.map(j => `<option value="${j.nombres} ${j.apellidos || ''}">${j.nombres} ${j.apellidos || ''}</option>`).join('')}
               </select>
             </div>
             <div class="form-row">
               <label>Jurado B <span class="req">*</span></label>
               <select id="s5JuradoB" ${bloqueado ? 'disabled' : ''}>
-                ${s5Jurados.map(j => `<option value="${j.nombre}">${j.nombre} (${j.especialidad})</option>`).join('')}
+                ${listaJurados.map(j => `<option value="${j.nombres} ${j.apellidos || ''}">${j.nombres} ${j.apellidos || ''}</option>`).join('')}
               </select>
             </div>
             <div class="form-row">
               <label>Jurado C <span class="req">*</span></label>
               <select id="s5JuradoC" ${bloqueado ? 'disabled' : ''}>
-                ${s5Jurados.map(j => `<option value="${j.nombre}">${j.nombre} (${j.especialidad})</option>`).join('')}
+                ${listaJurados.map(j => `<option value="${j.nombres} ${j.apellidos || ''}">${j.nombres} ${j.apellidos || ''}</option>`).join('')}
               </select>
             </div>
             <div id="s5FeedbackTerna" style="margin-bottom:10px;"></div>
@@ -225,21 +399,22 @@ function renderS5() {
         </div>
       </div>
 
-      <h4 style="margin-top:20px; margin-bottom:10px;">📋 Nómina de Jurados</h4>
+      <h4 style="margin-top:20px; margin-bottom:10px;">📋 Nómina de Jurados (Supabase)</h4>
       <div class="table-container">
         <table class="table">
           <thead>
-            <tr><th>Jurado</th><th>DNI</th><th>Correo</th><th>Especialidad</th><th>Credencial</th><th>Auditorio</th></tr>
+            <tr><th>Jurado</th><th>DNI</th><th>Correo</th><th>Especialidad</th><th>Estado</th></tr>
           </thead>
           <tbody>
-            ${s5Jurados.map(j => `
+            ${listaJurados.length === 0 ? `
+              <tr><td colspan="5" style="text-align:center;">No hay jurados registrados en Supabase.</td></tr>
+            ` : listaJurados.map(j => `
               <tr>
-                <td><strong>${j.nombre}</strong></td>
-                <td><code>${j.dni}</code></td>
-                <td>${j.correo}</td>
-                <td>${j.especialidad}</td>
-                <td><span class="badge badge-code">${j.credencial}</span></td>
-                <td><span class="table-badge-auditorio">${j.auditorio} · ${j.etiqueta}</span></td>
+                <td><strong>${j.nombres} ${j.apellidos || ''}</strong></td>
+                <td><code>${j.dni || '—'}</code></td>
+                <td>${j.correo_institucional || j.correo || '—'}</td>
+                <td>${j.especialidad || 'Música de Cámara'}</td>
+                <td><span class="badge badge-ok">Acreditado</span></td>
               </tr>
             `).join('')}
           </tbody>
@@ -252,7 +427,7 @@ function renderS5() {
 function bindS5() {
   const formCrear = document.getElementById('formCrearJurado');
   if (formCrear) {
-    formCrear.addEventListener('submit', e => {
+    formCrear.addEventListener('submit', async e => {
       e.preventDefault();
       const nombre = document.getElementById('s5Nombre').value.trim();
       const dni = document.getElementById('s5Dni').value.trim();
@@ -264,34 +439,54 @@ function bindS5() {
         fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] RF-35:</strong> Complete todos los campos.</div></div>';
         return;
       }
-      if (s5Jurados.some(j => j.correo.toLowerCase() === correo.toLowerCase())) {
-        fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] HU-14 Escenario 2:</strong> Correo ya registrado.</div></div>';
+
+      const { data: existeCorreo } = await supabase
+        .from('usuario')
+        .select('id_usuario')
+        .eq('correo_institucional', correo)
+        .maybeSingle();
+
+      if (existeCorreo) {
+        fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] HU-14 Escenario 2:</strong> Correo ya registrado en Supabase.</div></div>';
         return;
       }
 
       const credencial = 'JUR-2026-' + Math.floor(Math.random() * 9000 + 1000);
-      s5Jurados.push({
-        id: s5Jurados.length + 1,
-        nombre, dni, correo, especialidad: esp,
-        credencial, auditorio: 'Sala de Cámara', etiqueta: 'Jurado Suplente'
-      });
-      guardarTodoSubsistemas();
 
-      registrarCorreoSimulado(
-        correo,
-        'Bienvenido al Módulo de Evaluación - Credenciales Jurado',
-        `Usuario: ${correo} | Contraseña temporal: ${credencial}`,
-        'RF-36'
-      );
+      const { error } = await supabase
+        .from('usuario')
+        .insert([{
+          nombres: nombre,
+          apellidos: '',
+          dni: dni,
+          especialidad: esp,
+          correo_institucional: correo,
+          rol: 'jurado',
+          contraseña: credencial
+        }]);
 
-      showToast(`✅ Cuenta de jurado creada para ${nombre}. Credencial ${credencial} enviada (RF-36).`, 'ok');
-      renderAdminTab();
+      if (error) {
+        fb.innerHTML = `<div class="alert alert-danger"><div>Error al crear jurado en Supabase: ${error.message}</div></div>`;
+        return;
+      }
+
+      if (typeof registrarCorreoSimulado === 'function') {
+        registrarCorreoSimulado(
+          correo,
+          'Bienvenido al Módulo de Evaluación - Credenciales Jurado',
+          `Usuario: ${correo} | Contraseña temporal: ${credencial}`,
+          'RF-36'
+        );
+      }
+
+      showToast(`✅ Cuenta de jurado guardada en Supabase para ${nombre}. Credencial ${credencial} emitida.`, 'ok');
+      await renderAdminTab();
     });
   }
 
   const formTerna = document.getElementById('formAsignarTerna');
   if (formTerna) {
-    formTerna.addEventListener('submit', e => {
+    formTerna.addEventListener('submit', async e => {
       e.preventDefault();
       const aud = document.getElementById('s5Auditorio').value;
       const jA = document.getElementById('s5JuradoA').value;
@@ -305,15 +500,25 @@ function bindS5() {
         return;
       }
 
-      const cuartetosEnSala = s6Evaluaciones.filter(ev => ev.auditorio === aud);
-      const conflicto = cuartetosEnSala.find(ev => setJurados.has(ev.profesor));
-      if (conflicto) {
-        fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo por Conflicto (HU-15 · RF-38):</strong> <b>${conflicto.profesor}</b> es profesor responsable de un cuarteto en este auditorio (${conflicto.nombreCuarteto}).</div></div>`;
-        return;
+      const { data: cuartetosEnAuditorio } = await supabase
+        .from('cuarteto')
+        .select('nombre_cuarteto, id_profesor_responsable, usuario!id_profesor_responsable(nombres, apellidos)')
+        .eq('auditorio', aud);
+
+      if (cuartetosEnAuditorio && cuartetosEnAuditorio.length > 0) {
+        for (const c of cuartetosEnAuditorio) {
+          if (c.usuario) {
+            const nombreProfesor = `${c.usuario.nombres} ${c.usuario.apellidos || ''}`.trim();
+            if (setJurados.has(nombreProfesor)) {
+              fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo por Conflicto Académico (HU-15 · RF-38):</strong> <b>${nombreProfesor}</b> es Profesor Responsable del cuarteto "${c.nombre_cuarteto}" asignado al ${aud}.</div></div>`;
+              return;
+            }
+          }
+        }
       }
 
-      fb.innerHTML = `<div class="alert alert-success"><div><strong>✅ Terna Oficial Vinculada (HU-15 · RF-37/38):</strong> ${jA} (A), ${jB} (B) y ${jC} (C) asignados a <b>${aud}</b> sin conflicto.</div></div>`;
-      showToast(`✅ Terna de 3 jurados validada para ${aud} (HU-15).`, 'ok');
+      fb.innerHTML = `<div class="alert alert-success"><div><strong>✅ Terna Aprobada (HU-15):</strong> ${jA}, ${jB} y ${jC} asignados correctamente al <b>${aud}</b> sin incompatibilidades.</div></div>`;
+      showToast(`✅ Terna de 3 jurados validada para ${aud}`, 'ok');
     });
   }
 
@@ -321,22 +526,71 @@ function bindS5() {
   if (btnConflicto) {
     btnConflicto.addEventListener('click', () => {
       document.getElementById('s5Auditorio').value = 'Auditorio C — Sala Mozart';
-      document.getElementById('s5JuradoA').value = 'Dra. Beatriz Morales';
       const fb = document.getElementById('s5FeedbackTerna');
-      fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo por Conflicto (HU-15 · RF-38):</strong> <b>Dra. Beatriz Morales</b> es profesora responsable de Harmonia String Quartet en este auditorio.</div></div>`;
+      fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo por Conflicto (HU-15 · RF-38):</strong> El docente asignado es Profesor Responsable de un cuarteto activo en este auditorio.</div></div>`;
     });
   }
 }
 
 /* ============================================================================
-   S6 · SUPERVISIÓN DE EVALUACIONES Y DESCALIFICACIÓN (HU-18)
-   Nota: HU-16/17 (calificación) ya están en jurado.html
+   S6 · SUPERVISIÓN DE EVALUACIONES Y DESCALIFICACIÓN (HU-18) - 100% SUPABASE
    ============================================================================ */
-function renderS6() {
-  const bloqueado = s7Estado.edicionArchivada || s7Estado.faseEliminatoriaEstado === 'Concluida';
+async function renderS6() {
+  const estadoConcurso = await obtenerEstadoConcursoBD();
+  const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
+
+  // Consulta de cuartetos e iteración sobre evaluaciones asociadas
+  const { data: cuartetosBD } = await supabase
+    .from('cuarteto')
+    .select(`
+      id_cuarteto,
+      nombre_cuarteto,
+      codigo_cuarteto,
+      auditorio,
+      fecha_presentacion,
+      hora_presentacion,
+      estado_presentacion,
+      motivo_descalificacion,
+      evaluacion (
+        id_evaluacion,
+        etiqueta_jurado,
+        nota,
+        inmutable,
+        fecha_evaluacion,
+        usuario ( nombres, apellidos )
+      )
+    `)
+    .eq('estado_inscripcion', 'Inscrito');
+
+  const listaEvaluaciones = (cuartetosBD || []).map(c => {
+    const evs = c.evaluacion || [];
+    const getNota = (letra) => {
+      const e = evs.find(x => x.etiqueta_jurado === letra);
+      if (!e) return { jurado: `Jurado ${letra}`, valor: null, inmutable: false, fecha: '' };
+      const nombreJurado = e.usuario ? `${e.usuario.nombres} ${e.usuario.apellidos || ''}`.trim() : `Jurado ${letra}`;
+      return { jurado: nombreJurado, valor: e.nota, inmutable: !!e.inmutable, fecha: e.fecha_evaluacion || '' };
+    };
+
+    return {
+      idCuarteto: c.id_cuarteto,
+      codigoCuarteto: c.codigo_cuarteto || (`#${c.id_cuarteto}`),
+      nombreCuarteto: c.nombre_cuarteto,
+      auditorio: c.auditorio || 'Sin Asignar',
+      fecha: c.fecha_presentacion || '—',
+      hora: c.hora_presentacion || '—',
+      estadoPresentacion: c.estado_presentacion || 'Pendiente',
+      motivoDescalificacion: c.motivo_descalificacion || '',
+      notas: {
+        A: getNota('A'),
+        B: getNota('B'),
+        C: getNota('C')
+      }
+    };
+  });
+
   const listaFiltrada = filtroAuditorioAdminS6 === 'TODOS'
-    ? s6Evaluaciones
-    : s6Evaluaciones.filter(ev => ev.auditorio === filtroAuditorioAdminS6);
+    ? listaEvaluaciones
+    : listaEvaluaciones.filter(ev => ev.auditorio === filtroAuditorioAdminS6);
 
   return `
     <div class="card">
@@ -364,8 +618,9 @@ function renderS6() {
 
       <div id="s6FeedbackGlobal" style="margin-bottom:14px;"></div>
 
-      ${listaFiltrada.map(ev => {
-        const idx = s6Evaluaciones.findIndex(x => x.codigoCuarteto === ev.codigoCuarteto);
+      ${listaFiltrada.length === 0 ? `
+        <div style="text-align:center; padding:20px; color:var(--muted);">No hay presentaciones o cuartetos en este auditorio.</div>
+      ` : listaFiltrada.map(ev => {
         const esDescalificado = ev.estadoPresentacion === 'Descalificado';
         const notaA = ev.notas.A;
         const notaB = ev.notas.B;
@@ -376,10 +631,9 @@ function renderS6() {
           <div class="integrante-card" style="background:#fff; margin-bottom:16px; border-left:4px solid ${esDescalificado ? 'var(--danger)' : (todasCalificadas ? 'var(--success)' : 'var(--primary)')};">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
               <div>
-                <h4 style="font-size:16px; margin-bottom:4px;">#${ev.orden}° · ${ev.nombreCuarteto} <span class="chip">${ev.codigoCuarteto}</span></h4>
+                <h4 style="font-size:16px; margin-bottom:4px;">${ev.nombreCuarteto} <span class="chip">${ev.codigoCuarteto}</span></h4>
                 <div style="font-size:13px; color:var(--muted);">
-                  🏛️ <strong>${ev.auditorio}</strong> · 📅 ${ev.fecha} (${ev.hora}) ·
-                  🎼 ${ev.obraObligatoria} | ${ev.obraLibre}
+                  🏛️ <strong>${ev.auditorio}</strong> · 📅 ${ev.fecha} (${ev.hora})
                 </div>
               </div>
               <span class="badge ${esDescalificado ? 'badge-rej' : (todasCalificadas ? 'badge-ok' : 'badge-obs')}">
@@ -389,7 +643,7 @@ function renderS6() {
 
             ${esDescalificado ? `
               <div class="alert alert-danger" style="margin-top:12px; margin-bottom:0;">
-                <div><strong>🚫 Descalificado (HU-18 · RF-43/44):</strong> Causa: <b>${ev.motivoDescalificacion}</b>. Casillas anuladas y excluido del ranking.</div>
+                <div><strong>🚫 Descalificado (HU-18 · RF-43/44):</strong> Causa: <b>${ev.motivoDescalificacion || 'Sin especificar'}</b>. Excluido del ranking.</div>
               </div>
             ` : `
               <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:14px;">
@@ -405,7 +659,7 @@ function renderS6() {
                         <div style="font-size:22px; font-weight:800; color:var(--ink); margin-top:6px;">
                           ${Number(n.valor).toFixed(2)} <small style="font-size:11px; color:var(--muted);">/ 10.00</small>
                         </div>
-                        <div style="font-size:11px; color:var(--muted);">Firmado: ${n.fecha}</div>
+                        <div style="font-size:11px; color:var(--muted);">Firmado: ${n.fecha || '—'}</div>
                       ` : `
                         <div style="font-size:13px; color:var(--muted); margin-top:6px;">Pendiente (reservado para el jurado)</div>
                       `}
@@ -415,8 +669,8 @@ function renderS6() {
               </div>
 
               <div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <input type="text" id="motivoDesc_${idx}" placeholder="Causa oficial de descalificación (ej: Inasistencia al turno)..." style="flex:1; min-width:240px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:12px;" ${bloqueado ? 'disabled' : ''}>
-                <button type="button" class="btn btn-danger btn-descalificar" data-idx="${idx}" ${bloqueado ? 'disabled' : ''}>
+                <input type="text" id="motivoDesc_${ev.idCuarteto}" placeholder="Causa oficial de descalificación (ej: Inasistencia al turno)..." style="flex:1; min-width:240px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:12px;" ${bloqueado ? 'disabled' : ''}>
+                <button type="button" class="btn btn-danger btn-descalificar" data-id="${ev.idCuarteto}" data-nombre="${ev.nombreCuarteto}" ${bloqueado ? 'disabled' : ''}>
                   🚫 Descalificar Cuarteto (HU-18)
                 </button>
               </div>
@@ -438,10 +692,10 @@ function bindS6() {
   }
 
   document.querySelectorAll('.btn-descalificar').forEach(btn => {
-    btn.addEventListener('click', function () {
-      const idx = +this.dataset.idx;
-      const ev = s6Evaluaciones[idx];
-      const inpMotivo = document.getElementById(`motivoDesc_${idx}`);
+    btn.addEventListener('click', async function () {
+      const idCuarteto = this.dataset.id;
+      const nombreCuarteto = this.dataset.nombre;
+      const inpMotivo = document.getElementById(`motivoDesc_${idCuarteto}`);
       const motivo = inpMotivo ? inpMotivo.value.trim() : '';
       const fb = document.getElementById('s6FeedbackGlobal');
 
@@ -451,46 +705,93 @@ function bindS6() {
         return;
       }
 
-      if (!confirm(`¿Confirmar DESCALIFICACIÓN de ${ev.nombreCuarteto}? Esta acción es irreversible (RNF-26).`)) return;
+      if (!confirm(`¿Confirmar DESCALIFICACIÓN de ${nombreCuarteto}? Esta acción es irreversible (RNF-26).`)) return;
 
-      ev.estadoPresentacion = 'Descalificado';
-      ev.motivoDescalificacion = motivo;
-      guardarTodoSubsistemas();
+      const { error } = await supabase
+        .from('cuarteto')
+        .update({
+          estado_presentacion: 'Descalificado',
+          motivo_descalificacion: motivo
+        })
+        .eq('id_cuarteto', idCuarteto);
 
-      registrarCorreoSimulado(
-        'representante@cons.pe, docente@cons.pe',
-        `Notificación Formal de Descalificación - ${ev.nombreCuarteto}`,
-        `El cuarteto ${ev.nombreCuarteto} (${ev.codigoCuarteto}) ha sido descalificado. Causa: ${motivo}.`,
-        'RF-45'
-      );
+      if (error) {
+        fb.innerHTML = `<div class="alert alert-danger"><div>Error al descalificar en Supabase: ${error.message}</div></div>`;
+        return;
+      }
 
-      showToast(`🚫 ${ev.nombreCuarteto} descalificado (${motivo}). Excluido del ranking (HU-18).`, 'ok');
-      renderAdminTab();
+      if (typeof registrarCorreoSimulado === 'function') {
+        registrarCorreoSimulado(
+          'representante@cons.pe, docente@cons.pe',
+          `Notificación Formal de Descalificación - ${nombreCuarteto}`,
+          `El cuarteto ${nombreCuarteto} ha sido descalificado. Causa: ${motivo}.`,
+          'RF-45'
+        );
+      }
+
+      showToast(`🚫 ${nombreCuarteto} descalificado (${motivo}). Excluido del ranking (HU-18).`, 'ok');
+      await renderAdminTab();
     });
   });
 }
 
 /* ============================================================================
-   S7 · RANKING, CLASIFICACIÓN, PUBLICACIÓN Y CIERRE (HU-19 a HU-22)
+   S7 · RANKING, CLASIFICACIÓN, PUBLICACIÓN Y CIERRE (HU-19 a HU-22) - 100% SUPABASE
    ============================================================================ */
-function calcularRankingOrdenado() {
-  const activos = s6Evaluaciones.filter(ev => ev.estadoPresentacion !== 'Descalificado');
-  const filas = activos.map(ev => {
-    const a = ev.notas.A.inmutable ? Number(ev.notas.A.valor) : null;
-    const b = ev.notas.B.inmutable ? Number(ev.notas.B.valor) : null;
-    const c = ev.notas.C.inmutable ? Number(ev.notas.C.valor) : null;
-    const completo = (a !== null && b !== null && c !== null);
-    const promedio = completo ? Number(((a + b + c) / 3).toFixed(2)) : 0;
-    return { ...ev, notaA: a, notaB: b, notaC: c, completo, promedio };
+async function calcularRankingOrdenadoBD() {
+  const { data: cuartetosBD } = await supabase
+    .from('cuarteto')
+    .select(`
+      id_cuarteto,
+      nombre_cuarteto,
+      codigo_cuarteto,
+      auditorio,
+      estado_presentacion,
+      motivo_descalificacion,
+      evaluacion (
+        etiqueta_jurado,
+        nota,
+        inmutable
+      )
+    `)
+    .eq('estado_inscripcion', 'Inscrito');
+
+  const lista = cuartetosBD || [];
+  const activos = lista.filter(c => c.estado_presentacion !== 'Descalificado');
+  const descalificados = lista.filter(c => c.estado_presentacion === 'Descalificado');
+
+  const filas = activos.map(c => {
+    const evs = c.evaluacion || [];
+    const evA = evs.find(e => e.etiqueta_jurado === 'A' && e.inmutable);
+    const evB = evs.find(e => e.etiqueta_jurado === 'B' && e.inmutable);
+    const evC = evs.find(e => e.etiqueta_jurado === 'C' && e.inmutable);
+
+    const notaA = evA ? Number(evA.nota) : null;
+    const notaB = evB ? Number(evB.nota) : null;
+    const notaC = evC ? Number(evC.nota) : null;
+
+    const completo = (notaA !== null && notaB !== null && notaC !== null);
+    const promedio = completo ? Number(((notaA + notaB + notaC) / 3).toFixed(2)) : 0;
+
+    return {
+      idCuarteto: c.id_cuarteto,
+      nombreCuarteto: c.nombre_cuarteto,
+      codigoCuarteto: c.codigo_cuarteto || (`#${c.id_cuarteto}`),
+      auditorio: c.auditorio || 'Sin Asignar',
+      notaA, notaB, notaC,
+      completo, promedio
+    };
   });
+
   filas.sort((x, y) => y.promedio - x.promedio);
-  return filas;
+
+  return { ranking: filas, descalificados };
 }
 
-function renderS7() {
-  const ranking = calcularRankingOrdenado();
-  const descalificados = s6Evaluaciones.filter(ev => ev.estadoPresentacion === 'Descalificado');
-  const archivado = s7Estado.edicionArchivada;
+async function renderS7() {
+  const estadoConcurso = await obtenerEstadoConcursoBD();
+  const { ranking, descalificados } = await calcularRankingOrdenadoBD();
+  const archivado = estadoConcurso.edicion_archivada;
 
   return `
     <div class="card">
@@ -500,11 +801,11 @@ function renderS7() {
           <p class="subtitle">HU-19 · HU-20 · HU-21 · HU-22 · RF-46 a RF-54</p>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <span class="badge ${s7Estado.faseEliminatoriaEstado === 'Concluida' ? 'badge-ok' : 'badge-draft'}">
-            Fase: ${s7Estado.faseEliminatoriaEstado}
+          <span class="badge ${estadoConcurso.fase_eliminatoria_estado === 'Concluida' ? 'badge-ok' : 'badge-draft'}">
+            Fase: ${estadoConcurso.fase_eliminatoria_estado}
           </span>
-          <span class="badge ${s7Estado.cuadroPublicado ? 'badge-ok' : 'badge-obs'}">
-            Portal Público: ${s7Estado.cuadroPublicado ? 'Publicado (RF-50)' : 'No Publicado'}
+          <span class="badge ${estadoConcurso.cuadro_publicado ? 'badge-ok' : 'badge-obs'}">
+            Portal Público: ${estadoConcurso.cuadro_publicado ? 'Publicado (RF-50)' : 'No Publicado'}
           </span>
           <span class="badge ${archivado ? 'badge-rej' : 'badge-code'}">
             Edición 2026: ${archivado ? '🔒 ARCHIVADA' : 'En Curso'}
@@ -512,33 +813,33 @@ function renderS7() {
         </div>
       </div>
 
-      ${archivado && s7Estado.ganadores ? `
+      ${archivado && estadoConcurso.ganadores ? `
         <div class="alert alert-success" style="margin-top:14px;">
           <div>
             <strong>🎉 Edición 2026 Archivada (HU-22 · RF-52/53/54 · RNF-29)</strong><br>
-            Fecha de archivado: ${s7Estado.fechaArchivado}. Registros protegidos contra alteraciones.
+            Fecha de archivado: ${estadoConcurso.fecha_archivado}. Registros protegidos contra alteraciones.
           </div>
         </div>
         <div class="podium-grid">
           <div class="podium-card gold">
             <div style="font-size:32px;">🥇</div>
             <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#854d0e;">1.er Lugar · Ganador</div>
-            <div style="font-size:18px; font-weight:800; margin-top:4px;">${s7Estado.ganadores.primero.nombreCuarteto}</div>
-            <div style="font-size:14px; font-weight:700; color:#713f12;">Promedio: ${s7Estado.ganadores.primero.promedio.toFixed(2)}</div>
+            <div style="font-size:18px; font-weight:800; margin-top:4px;">${estadoConcurso.ganadores.primero?.nombreCuarteto || '—'}</div>
+            <div style="font-size:14px; font-weight:700; color:#713f12;">Promedio: ${estadoConcurso.ganadores.primero?.promedio ? estadoConcurso.ganadores.primero.promedio.toFixed(2) : '—'}</div>
           </div>
-          ${s7Estado.ganadores.segundo ? `
+          ${estadoConcurso.ganadores.segundo ? `
           <div class="podium-card silver">
             <div style="font-size:32px;">🥈</div>
             <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#334155;">2.º Puesto</div>
-            <div style="font-size:18px; font-weight:800; margin-top:4px;">${s7Estado.ganadores.segundo.nombreCuarteto}</div>
-            <div style="font-size:14px; font-weight:700; color:#475569;">Promedio: ${s7Estado.ganadores.segundo.promedio.toFixed(2)}</div>
+            <div style="font-size:18px; font-weight:800; margin-top:4px;">${estadoConcurso.ganadores.segundo.nombreCuarteto}</div>
+            <div style="font-size:14px; font-weight:700; color:#475569;">Promedio: ${estadoConcurso.ganadores.segundo.promedio.toFixed(2)}</div>
           </div>` : ''}
-          ${s7Estado.ganadores.tercero ? `
+          ${estadoConcurso.ganadores.tercero ? `
           <div class="podium-card bronze">
             <div style="font-size:32px;">🥉</div>
             <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#9a3412;">3.er Puesto</div>
-            <div style="font-size:18px; font-weight:800; margin-top:4px;">${s7Estado.ganadores.tercero.nombreCuarteto}</div>
-            <div style="font-size:14px; font-weight:700; color:#7c2d12;">Promedio: ${s7Estado.ganadores.tercero.promedio.toFixed(2)}</div>
+            <div style="font-size:18px; font-weight:800; margin-top:4px;">${estadoConcurso.ganadores.tercero.nombreCuarteto}</div>
+            <div style="font-size:14px; font-weight:700; color:#7c2d12;">Promedio: ${estadoConcurso.ganadores.tercero.promedio.toFixed(2)}</div>
           </div>` : ''}
         </div>
       ` : ''}
@@ -562,7 +863,7 @@ function renderS7() {
                 if (archivado && i === 0) { condicion = '🏆 Ganador'; badgeCls = 'badge-ok'; }
                 else if (archivado && i === 1) { condicion = '🥈 2.º Puesto'; badgeCls = 'badge-ok'; }
                 else if (archivado && i === 2) { condicion = '🥉 3.er Puesto'; badgeCls = 'badge-ok'; }
-                else if (s7Estado.faseEliminatoriaEstado === 'Concluida') { condicion = '✅ Clasificado'; badgeCls = 'badge-ok'; }
+                else if (estadoConcurso.fase_eliminatoria_estado === 'Concluida') { condicion = '✅ Clasificado'; badgeCls = 'badge-ok'; }
                 else { condicion = 'Puntaje Consolidado'; badgeCls = 'badge-code'; }
               } else {
                 condicion = '⏳ Falta Nota';
@@ -584,9 +885,9 @@ function renderS7() {
             ${descalificados.map(d => `
               <tr style="background:#fff5f5;">
                 <td>—</td>
-                <td><strong>${d.nombreCuarteto}</strong> (${d.codigoCuarteto})</td>
-                <td>${d.auditorio}</td>
-                <td colspan="3" style="color:var(--danger); font-weight:600;">Anulado (${d.motivoDescalificacion})</td>
+                <td><strong>${d.nombre_cuarteto}</strong> (${d.codigo_cuarteto || ('#' + d.id_cuarteto)})</td>
+                <td>${d.auditorio || 'Sin Asignar'}</td>
+                <td colspan="3" style="color:var(--danger); font-weight:600;">Anulado (${d.motivo_descalificacion || 'Inasistencia / Incumplimiento'})</td>
                 <td>—</td>
                 <td><span class="badge badge-rej">Excluido (RF-44)</span></td>
               </tr>
@@ -615,60 +916,73 @@ function bindS7() {
 
   const btnCerrar = document.getElementById('btnCerrarFase');
   if (btnCerrar) {
-    btnCerrar.addEventListener('click', () => {
-      const ranking = calcularRankingOrdenado();
+    btnCerrar.addEventListener('click', async () => {
+      const { ranking } = await calcularRankingOrdenadoBD();
       const incompletos = ranking.filter(r => !r.completo);
       if (incompletos.length > 0) {
         fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo (HU-20 · CA1 · RF-48):</strong> Faltan notas en <b>${incompletos.map(x => x.nombreCuarteto).join(', ')}</b>.</div></div>`;
         return;
       }
-      s7Estado.faseEliminatoriaEstado = 'Concluida';
-      s7Estado.faseFinalEstado = 'Concluida';
-      guardarTodoSubsistemas();
+
+      await guardarEstadoConcursoBD({
+        fase_eliminatoria_estado: 'Concluida',
+        fase_final_estado: 'Concluida'
+      });
+
       fb.innerHTML = `<div class="alert alert-success"><div><strong>✅ Fase Concluida (HU-20 · RF-49):</strong> 100% de notas registradas. Mejores promedios → "Clasificado".</div></div>`;
       showToast('✅ Fase cerrada y cuartetos clasificados (HU-20).', 'ok');
-      renderAdminTab();
+      await renderAdminTab();
     });
   }
 
   const btnPublicar = document.getElementById('btnPublicarCuadro');
   if (btnPublicar) {
-    btnPublicar.addEventListener('click', () => {
-      if (s7Estado.faseEliminatoriaEstado !== 'Concluida') {
+    btnPublicar.addEventListener('click', async () => {
+      const estadoConcurso = await obtenerEstadoConcursoBD();
+      if (estadoConcurso.fase_eliminatoria_estado !== 'Concluida') {
         fb.innerHTML = `<div class="alert alert-warn"><div><strong>⚠️ Fase aún abierta:</strong> Primero cierre la fase (HU-20).</div></div>`;
         return;
       }
-      s7Estado.cuadroPublicado = true;
-      guardarTodoSubsistemas();
-      registrarCorreoSimulado(
-        'todos.representantes@cons.pe, todos.profesores@cons.pe',
-        'Acta Oficial de Resultados - Concurso 2026',
-        'Se ha publicado en el portal institucional la tabla oficial de posiciones.',
-        'RF-51'
-      );
+
+      await guardarEstadoConcursoBD({ cuadro_publicado: true });
+
+      if (typeof registrarCorreoSimulado === 'function') {
+        registrarCorreoSimulado(
+          'todos.representantes@cons.pe, todos.profesores@cons.pe',
+          'Acta Oficial de Resultados - Concurso 2026',
+          'Se ha publicado en el portal institucional la tabla oficial de posiciones.',
+          'RF-51'
+        );
+      }
       showToast('📢 Cuadro Oficial publicado y correo masivo enviado (HU-21 · RF-50/51).', 'ok');
-      renderAdminTab();
+      await renderAdminTab();
     });
   }
 
   const btnArchivar = document.getElementById('btnArchivarEdicion');
   if (btnArchivar) {
-    btnArchivar.addEventListener('click', () => {
-      if (s7Estado.faseFinalEstado !== 'Concluida') {
+    btnArchivar.addEventListener('click', async () => {
+      const estadoConcurso = await obtenerEstadoConcursoBD();
+      if (estadoConcurso.fase_final_estado !== 'Concluida') {
         fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Requisito (HU-22 · CA1 · RF-52):</strong> La Fase Final debe estar "Concluida".</div></div>`;
         return;
       }
-      const ranking = calcularRankingOrdenado();
-      s7Estado.edicionArchivada = true;
-      s7Estado.fechaArchivado = new Date().toLocaleString('es-PE');
-      s7Estado.ganadores = {
+
+      const { ranking } = await calcularRankingOrdenadoBD();
+      const ganadores = {
         primero: ranking[0] || null,
         segundo: ranking[1] || null,
         tercero: ranking[2] || null
       };
-      guardarTodoSubsistemas();
+
+      await guardarEstadoConcursoBD({
+        edicion_archivada: true,
+        fecha_archivado: new Date().toLocaleString('es-PE'),
+        ganadores: ganadores
+      });
+
       showToast(`🏆 Edición 2026 archivada. Ganador: ${ranking[0] ? ranking[0].nombreCuarteto : '—'} (HU-22).`, 'ok');
-      renderAdminTab();
+      await renderAdminTab();
     });
   }
 }

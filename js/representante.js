@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase.js';
+
 /* ============================================================
    PORTAL DEL REPRESENTANTE (Conectado 100% a Supabase)
    ============================================================ */
@@ -52,9 +53,9 @@ async function cargarDatosDesdeSupabase() {
 
     const c = cuartetosData[0];
     StoreRepresentante.ficha.id = c.id_cuarteto;
-    StoreRepresentante.ficha.codigo = c.codigo_cuarteto || 'CQ-2026-0000';
+    StoreRepresentante.ficha.codigo = c.codigo_cuarteto || `CQ-2026-${c.id_cuarteto}`;
     StoreRepresentante.ficha.nombre = c.nombre_cuarteto;
-    StoreRepresentante.ficha.estado = c.estado_inscripcion ? c.estado_inscripcion.toLowerCase() : 'pendiente';
+    StoreRepresentante.ficha.estado = c.estado_inscripcion ? c.estado_inscripcion.toLowerCase() : 'en borrador';
     StoreRepresentante.ficha.repertorio = {
       obligatoria: { titulo: c.obra_obligatoria },
       libre: { titulo: c.obra_libre_titulo, duracion: c.obra_libre_duracion }
@@ -76,7 +77,7 @@ async function cargarDatosDesdeSupabase() {
       }));
     }
 
-    // 3. Consultar profesor responsable si existe
+    // 3. Consultar profesor responsable si existe (formateando nombre sin valores null)
     if (c.id_profesor_responsable) {
       const { data: profData } = await supabase
         .from('usuario')
@@ -85,8 +86,9 @@ async function cargarDatosDesdeSupabase() {
         .single();
 
       if (profData) {
+        const nombreCompleto = `${profData.nombres || ''} ${profData.apellidos || ''}`.trim();
         StoreRepresentante.ficha.profesor = {
-          nombre: `${profData.nombres} ${profData.apellidos}`,
+          nombre: nombreCompleto || 'Docente Responsable',
           dni: profData.dni,
           correo: profData.correo_institucional
         };
@@ -142,11 +144,35 @@ function switchTab(tab) {
    ============================================================ */
 function renderFichaRepresentante() {
   const f = StoreRepresentante.ficha;
-  const esEditable = f.estado === 'en borrador' || f.estado === 'observado';
+  const estadoNorm = f.estado.toLowerCase();
+
+  // Evaluación de estado para asignar icono, clase CSS y editabilidad
+  let icono = '📝';
+  let claseBanner = 'borrador';
+  let esEditable = false;
+
+  if (estadoNorm === 'inscrito' || estadoNorm === 'validado') {
+    icono = '✅';
+    claseBanner = 'validado';
+    esEditable = false;
+  } else if (estadoNorm === 'rechazado') {
+    icono = '❌';
+    claseBanner = 'rechazado';
+    esEditable = false;
+  } else if (estadoNorm === 'observado') {
+    icono = '⚠️';
+    claseBanner = 'observado';
+    esEditable = true;
+  } else {
+    // en borrador / preinscripcion / pendiente
+    icono = '📝';
+    claseBanner = 'borrador';
+    esEditable = true;
+  }
 
   return `
-    <div class="estado-banner ${f.estado === 'validado' ? 'validado' : 'observado'}">
-      <div class="estado-icon">${esEditable ? '📝' : '✅'}</div>
+    <div class="estado-banner ${claseBanner}">
+      <div class="estado-icon">${icono}</div>
       <div class="estado-info">
         <h3>Estado: ${f.estado.toUpperCase()}</h3>
         <p>${esEditable ? 'Puedes modificar los datos de tu ficha antes de la validación administrativa.' : 'Ficha en modo lectura (RNF-13).'}</p>
@@ -228,7 +254,7 @@ function asignarEventListenersDinamicos(tab) {
           StoreRepresentante.ficha.fechaConfirmacionValor = fechaHoy;
 
           alert('✅ Confirmación de estado y valor registrada con éxito.');
-          renderTab('ficha');
+          switchTab('ficha');
         } catch (err) {
           console.error('Error al confirmar valor:', err);
         }
