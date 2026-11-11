@@ -45,7 +45,7 @@ export async function cambiarEstadoInscripcionBD(idCuarteto, nuevoEstado) {
 /**
  * Consulta en Supabase todos los usuarios con rol de Profesor o Jurado activos (estado = true)
  */
-export async function obtenerDocentesHabilitadosBD() {
+/*export async function obtenerDocentesHabilitadosBD() {
   try {
     const { data: usuarios, error } = await supabase
       .from('usuario')
@@ -73,6 +73,54 @@ export async function obtenerDocentesHabilitadosBD() {
       return {
         id: u.id_usuario,
         nombre: `${u.nombres} ${u.apellidos}`,
+        dni: u.dni,
+        correo: u.correo_institucional,
+        rolNombre: u.rol?.nombre_rol || 'Docente',
+        esJurado: esJurado
+      };
+    });
+  } catch (err) {
+    console.error('Error al obtener docentes desde Supabase:', err);
+    return [];
+  }
+}*/
+/**
+* Consulta en Supabase todos los usuarios con rol de Profesor o Jurado activos (estado = true)
+*/
+export async function obtenerDocentesHabilitadosBD() {
+  try {
+    const { data: usuarios, error } = await supabase
+      .from('usuario')
+      .select(`
+        id_usuario,
+        dni,
+        nombres,
+        apellidos,
+        correo_institucional,
+        estado,
+        id_rol,
+        rol (
+          id_rol,
+          nombre_rol
+        )
+      `)
+      .eq('estado', true)
+      // 1. CANDADO DE SEGURIDAD: Solo traer filas que tengan id_rol 2 (profesor) o 7 (jurado)
+      .in('id_rol', [2, 7]);
+
+    if (error) throw error;
+
+    return (usuarios || []).map(u => {
+      const nombreRol = u.rol?.nombre_rol ? u.rol.nombre_rol.toLowerCase() : '';
+      const esJurado = nombreRol.includes('juez') || nombreRol.includes('jurado');
+
+      // 2. LIMPIEZA DE STRINGS "NULL"
+      const nombreLimpio = (u.nombres && u.nombres !== 'null') ? u.nombres : '';
+      const apellidoLimpio = (u.apellidos && u.apellidos !== 'null') ? u.apellidos : '';
+
+      return {
+        id: u.id_usuario,
+        nombre: `${nombreLimpio} ${apellidoLimpio}`.trim() || 'Docente Habilitado',
         dni: u.dni,
         correo: u.correo_institucional,
         rolNombre: u.rol?.nombre_rol || 'Docente',
