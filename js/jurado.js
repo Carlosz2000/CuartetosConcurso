@@ -4,7 +4,12 @@
    RF-41/42: Escala 0.0-10.0 y firma inmutable (Jurado A/B/C)
    ============================================================ */
 import { requireRol } from './core/session.js';
-import { supabase } from '../config/supabase.js';
+import { 
+  obtenerDatosJuradoBD, 
+  obtenerEstadoConcursoBD, 
+  obtenerCuartetosPorAuditorioBD, 
+  guardarEvaluacionJuradoBD 
+} from './services/juradoService.js';
 
 let juradoSesion = null;
 let juradoCuenta = null;
@@ -24,44 +29,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   await renderSesionJurado();
 });
 
-/* ---------- Consultar datos del jurado autenticado ---------- */
-async function obtenerDatosJuradoBD(correo) {
-  const { data: usuario } = await supabase
-    .from('usuario')
-    .select('*')
-    .ilike('correo_institucional', correo)
-    .maybeSingle();
-
-  if (!usuario) return null;
-
-  // Obtener la asignación de auditorio y etiqueta ('A', 'B', 'C') desde la terna/auditorio
-  const { data: asignacion } = await supabase
-    .from('jurado_auditorio')
-    .select('auditorio, etiqueta_jurado')
-    .eq('id_usuario', usuario.id_usuario)
-    .maybeSingle();
-
-  return {
-    ...usuario,
-    auditorio: asignacion?.auditorio || usuario.auditorio || 'Auditorio Principal',
-    etiqueta: asignacion?.etiqueta_jurado || 'C' // 'A', 'B' o 'C'
-  };
-}
-
-/* ---------- Consultar estado global del concurso ---------- */
-async function obtenerEstadoConcursoBD() {
-  const { data } = await supabase
-    .from('configuracion_concurso')
-    .select('*')
-    .eq('id_edicion', 2026)
-    .maybeSingle();
-
-  return data || {
-    fase_eliminatoria_estado: 'En Curso',
-    edicion_archivada: false
-  };
-}
-
 /* ---------- Render principal de la sesión del jurado ---------- */
 async function renderSesionJurado() {
   const cont = document.getElementById('juradoMainContent');
@@ -79,37 +46,10 @@ async function renderSesionJurado() {
 
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
-  const miEtiqueta = juradoCuenta.etiqueta;
+  const miEtiqueta = juradoCuenta.etiqueta || 'C';
 
-  // RF-39: Consultar únicamente los cuartetos en estado 'Inscrito' asignados a SU auditorio
-  const { data: cuartetosBD } = await supabase
-    .from('cuarteto')
-    .select(`
-      id_cuarteto,
-      nombre_cuarteto,
-      codigo_cuarteto,
-      auditorio,
-      fecha_presentacion,
-      hora_presentacion,
-      estado_presentacion,
-      motivo_descalificacion,
-      obra_obligatoria:obra!id_obra_obligatoria(titulo),
-      obra_libre_titulo,
-      evaluacion (
-        id_evaluacion,
-        id_usuario,
-        etiqueta_jurado,
-        nota,
-        inmutable,
-        fecha_evaluacion,
-        usuario ( nombres, apellidos )
-      )
-    `)
-    .eq('estado_inscripcion', 'Inscrito')
-    .eq('auditorio', juradoCuenta.auditorio)
-    .order('hora_presentacion', { ascending: true });
-
-  const misCuartetos = cuartetosBD || [];
+  // RF-39: Consultar únicamente los cuartetos asignados estrictamente a su auditorio
+  const misCuartetos = await obtenerCuartetosPorAuditorioBD(juradoCuenta.auditorio);
 
   cont.innerHTML = `
     <div class="card">
@@ -135,7 +75,7 @@ async function renderSesionJurado() {
         const getNota = (letra) => {
           const e = evs.find(x => x.etiqueta_jurado === letra);
           if (!e) return { jurado: `Jurado ${letra}`, valor: null, inmutable: false };
-          const nom = e.usuario ? `${e.usuario.nombres} ${e.usuario.apellidos || ''}`.trim() : `Jurado ${letra}`;
+          const nom = e.nombre_jurado || `Jurado ${letra}`;
           return { jurado: nom, valor: e.nota, inmutable: !!e.inmutable };
         };
 
@@ -146,14 +86,14 @@ async function renderSesionJurado() {
         };
 
         const miNotaObj = notasDict[miEtiqueta];
-        const tituloObligatoria = c.obra_obligatoria?.titulo || 'Sin asignar';
+        const tituloObligatoria = c.obra_obligatoria || 'Sin asignar';
         const tituloLibre = c.obra_libre_titulo || 'Sin asignar';
 
         return `
           <div class="integrante-card" style="background:#fff; margin-top:14px; border-left:4px solid ${descalificado ? 'var(--danger)' : (miNotaObj.inmutable ? 'var(--success)' : 'var(--primary)')};">
             <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
               <div>
-                <h4>#${index + 1}° · ${c.nombre_cuarteto} <span class="chip">${c.codigo_cuarteto || (` CRT-${c.id_cuarteto}`)}</span></h4>
+                <h4>#${index + 1}° · ${c.nombre_cuarteto} <span class="chip">${c.codigo_cuarteto || (`CRT-${c.id_cuarteto}`)}</span></h4>
                 <div style="font-size:13px; color:var(--muted);">
                   📅 ${c.fecha_presentacion || '2026-11-20'} · ${c.hora_presentacion || '10:00'} · 🎼 ${tituloObligatoria} | ${tituloLibre}
                 </div>
@@ -198,8 +138,8 @@ async function renderSesionJurado() {
           </div>
         `;
       }).join('')}
-    </div>
-  `;
+  </div>
+`;
 
   bindEventsJurado(miEtiqueta);
 }
@@ -226,26 +166,24 @@ function bindEventsJurado(letra) {
 
       const notaFinal = Math.round(val * 100) / 100;
       const ahora = new Date().toISOString();
+      const nombreJuradoCompleto = `${juradoCuenta.nombres} ${juradoCuenta.apellidos || ''}`.trim();
 
-      // Guardar o actualizar la evaluación inmutable en Supabase
-      const { error } = await supabase
-        .from('evaluacion')
-        .upsert([{
+      try {
+        await guardarEvaluacionJuradoBD({
           id_cuarteto: idCuarteto,
-          id_usuario: juradoCuenta.id_usuario,
+          codigo_cuarteto: idCuarteto,
           etiqueta_jurado: letra,
+          nombre_jurado: nombreJuradoCompleto,
           nota: notaFinal,
           inmutable: true,
           fecha_evaluacion: ahora
-        }], { onConflict: 'id_cuarteto, etiqueta_jurado' });
+        });
 
-      if (error) {
+        alert(`🔒 Nota ${notaFinal.toFixed(2)} firmada como Jurado ${letra} para ${nombreCuarteto}. Registro inmutable (RF-42).`);
+        await renderSesionJurado();
+      } catch (error) {
         fb.innerHTML = `<div class="alert alert-danger"><div>Error al guardar la calificación en Supabase: ${error.message}</div></div>`;
-        return;
       }
-
-      showToast(`🔒 Nota ${notaFinal.toFixed(2)} firmada como Jurado ${letra} para ${nombreCuarteto}. Registro inmutable (RF-42).`, 'ok');
-      await renderSesionJurado();
     });
   });
 }

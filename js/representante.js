@@ -2,7 +2,7 @@ import { supabase } from '../config/supabase.js';
 
 /* ============================================================
    PORTAL DEL REPRESENTANTE (Conectado 100% a Supabase)
-   Sincronizado con S4 (Cronograma) y S6 (Supervisión)
+   Sincronizado con S4 (Cronograma), S6 (Supervisión) y Leaderboard
    Seguridad Estricta: Aislamiento por Cuenta del Representante Creador
    ============================================================ */
 
@@ -13,6 +13,7 @@ let StoreRepresentante = {
     nombre: '',
     estado: 'pendiente',
     motivo: '',
+    observacionProfesor: '', // 💬 Campo para el mensaje/motivo del profesor
     repertorio: { obligatoria: null, libre: null },
     integrantes: [],
     profesor: null,
@@ -35,6 +36,14 @@ const hoy = () => new Date().toLocaleString('es-PE', {
 });
 
 document.addEventListener('DOMContentLoaded', async function () {
+  // 1. Vincular las pestañas inmediatamente para asegurar la navegación fluida
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      switchTab(this.dataset.tab);
+    });
+  });
+
+  // 2. Cargar los datos desde Supabase
   await cargarDatosDesdeSupabase();
   configurarBuzonObservaciones();
 });
@@ -54,8 +63,6 @@ async function cargarDatosDesdeSupabase() {
       return;
     }
 
-    // CONSULTA FLEXIBLE Y SEGURA PARA EL REPRESENTANTE CREADOR:
-    // Intenta buscar por id_representante o por el correo de contacto si aplica
     let cuartetosData = null;
     let errCuarteto = null;
 
@@ -79,7 +86,6 @@ async function cargarDatosDesdeSupabase() {
       errCuarteto = resEmail.error;
     }
 
-    // Si el representante no tiene ningún cuarteto creado asociado a su cuenta
     if (errCuarteto || !cuartetosData || cuartetosData.length === 0) {
       StoreRepresentante.ficha.nombre = 'Sin Cuarteto Registrado';
       StoreRepresentante.ficha.estado = 'Sin Ficha';
@@ -92,6 +98,10 @@ async function cargarDatosDesdeSupabase() {
     StoreRepresentante.ficha.codigo = c.codigo_cuarteto || `CQ-2026-${c.id_cuarteto}`;
     StoreRepresentante.ficha.nombre = c.nombre_cuarteto;
     StoreRepresentante.ficha.estado = c.estado_inscripcion ? c.estado_inscripcion.toLowerCase() : 'en borrador';
+    
+    // 💬 Capturar la observación o motivo de aprobación/rechazo enviado por el profesor
+    StoreRepresentante.ficha.observacionProfesor = c.observacion_profesor || '';
+
     StoreRepresentante.ficha.repertorio = {
       obligatoria: c.obra_obligatoria || 'No especificada',
       libre: c.obra_libre_titulo || 'No especificada'
@@ -147,12 +157,6 @@ async function cargarDatosDesdeSupabase() {
   const headerCodigo = $('headerCodigo');
   if (headerCodigo) headerCodigo.textContent = `Cuarteto: ${nombre} (${codigo})`;
 
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', function () {
-      switchTab(this.dataset.tab);
-    });
-  });
-
   switchTab('ficha');
 }
 
@@ -171,7 +175,7 @@ function renderizarVistaSinCuarteto() {
 /* ============================================================
    NAVEGACIÓN POR TABS EN EL PORTAL
    ============================================================ */
-function switchTab(tab) {
+async function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
@@ -184,6 +188,9 @@ function switchTab(tab) {
       break;
     case 'citacion':
       content.innerHTML = renderCitacion();
+      break;
+    case 'leaderboard':
+      content.innerHTML = await renderLeaderboardPublico();
       break;
     case 'retiro':
       content.innerHTML = renderRetiro();
@@ -227,6 +234,14 @@ function renderFichaRepresentante() {
         <p>${esEditable ? 'Puedes modificar los datos de tu ficha antes de la validación administrativa.' : 'Ficha en modo lectura (RNF-13).'}</p>
       </div>
     </div>
+
+    <!-- 💬 Comentario o motivo oficial enviado por el profesor supervisor -->
+    ${f.observacionProfesor ? `
+      <div class="card" style="border-left: 4px solid var(--primary); background: #f8fafc; margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 6px;">💬 Comentarios del Docente Supervisor:</h4>
+        <p style="font-size: 13px; color: var(--ink); margin: 0; line-height: 1.5;">${f.observacionProfesor}</p>
+      </div>
+    ` : ''}
 
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -325,6 +340,128 @@ function renderCitacion() {
       `)}
     </div>
   `;
+}
+
+/* ============================================================
+   TAB: LEADERBOARD OFICIAL PÚBLICO
+   ============================================================ */
+async function renderLeaderboardPublico() {
+  try {
+    // 1. Verificar si el admin publicó el cuadro en configuracion_concurso
+    const { data: config } = await supabase
+      .from('configuracion_concurso')
+      .select('portal_publicado')
+      .eq('id', 1)
+      .maybeSingle();
+
+    const publicado = config?.portal_publicado || false;
+
+    if (!publicado) {
+      return `
+        <div class="card" style="text-align:center; padding:40px;">
+          <h3>🔒 Leaderboard No Disponible</h3>
+          <p style="color:var(--muted); margin-top:10px;">La administración aún no ha publicado el cuadro oficial de resultados de la fase eliminatoria.</p>
+        </div>
+      `;
+    }
+
+    // 2. Obtener cuartetos inscritos y evaluaciones
+    const { data: cuartetosBD } = await supabase
+      .from('cuarteto')
+      .select('*')
+      .eq('estado_inscripcion', 'Inscrito');
+
+    let listaEvaluaciones = [];
+    try {
+      const { data: evsBD } = await supabase.from('evaluacion').select('*');
+      if (evsBD) listaEvaluaciones = evsBD;
+    } catch (e) {
+      console.warn('Error leyendo evaluaciones:', e);
+    }
+
+    const cuartetos = cuartetosBD || [];
+
+    const rankingProcesado = cuartetos.map(c => {
+      const esDescalificado = c.estado_presentacion === 'Descalificado';
+      const evsCuarteto = listaEvaluaciones.filter(e => e.id_cuarteto === c.id_cuarteto || e.codigo_cuarteto === c.codigo_cuarteto);
+
+      const getNota = (letra) => {
+        const e = evsCuarteto.find(x => x.etiqueta_jurado === letra && x.inmutable);
+        return e ? Number(e.nota) : null;
+      };
+
+      const notaA = getNota('A');
+      const notaB = getNota('B');
+      const notaC = getNota('C');
+
+      const notasValidas = [notaA, notaB, notaC].filter(n => n !== null);
+      const tieneTresNotas = notasValidas.length === 3;
+      const promedio = tieneTresNotas 
+        ? Number((notasValidas.reduce((acc, val) => acc + val, 0) / 3).toFixed(2)) 
+        : 0;
+
+      return {
+        codigo: c.codigo_cuarteto || (`CQ-2026-${c.id_cuarteto}`),
+        nombre: c.nombre_cuarteto,
+        auditorio: c.auditorio || 'Sin Asignar',
+        promedio,
+        tieneTresNotas,
+        descalificado: esDescalificado
+      };
+    });
+
+    const leaderboardOficial = rankingProcesado
+      .filter(q => !q.descalificado && q.tieneTresNotas)
+      .sort((a, b) => b.promedio - a.promedio);
+
+    return `
+      <div class="card">
+        <div class="ficha-header">
+          <div>
+            <h2>🏆 Leaderboard Oficial del Concurso</h2>
+            <p class="subtitle">Cuartetos evaluados con sus tres calificaciones inmutables, ordenados de mayor a menor promedio.</p>
+          </div>
+          <span class="badge badge-ok">🌐 Publicado Oficialmente</span>
+        </div>
+
+        <div style="margin-top:16px;">
+          <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px; background:#fff; border-radius:8px; overflow:hidden;">
+            <thead>
+              <tr style="background:#f8fafc; border-bottom:2px solid var(--border); color:var(--muted); font-weight:700;">
+                <th style="padding:12px 16px;">Puesto</th>
+                <th style="padding:12px 16px;">Cuarteto</th>
+                <th style="padding:12px 16px;">Auditorio</th>
+                <th style="padding:12px 16px; text-align:center;">Promedio Final</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${leaderboardOficial.length === 0 ? `
+                <tr>
+                  <td colspan="4" style="text-align:center; padding:24px; color:var(--muted);">
+                    No hay cuartetos con tres notas completas registrados en el leaderboard actual.
+                  </td>
+                </tr>
+              ` : leaderboardOficial.map((q, idx) => `
+                <tr style="border-bottom:1px solid #f1f5f9; background:${idx === 0 ? '#fefce8' : '#fff'};">
+                  <td style="padding:12px 16px; font-weight:800; color:var(--primary);">#${idx + 1}</td>
+                  <td style="padding:12px 16px;"><strong>${q.nombre}</strong><br><small style="color:var(--muted);">${q.codigo}</small></td>
+                  <td style="padding:12px 16px; color:var(--muted);">${q.auditorio}</td>
+                  <td style="padding:12px 16px; text-align:center;">
+                    <span style="background:#dcfce7; color:#15803d; padding:4px 12px; border-radius:12px; font-weight:700; font-size:15px;">
+                      ${q.promedio.toFixed(2)}
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    console.error('Error al renderizar leaderboard público:', err);
+    return `<div class="card"><div class="alert alert-danger">Error al cargar el leaderboard.</div></div>`;
+  }
 }
 
 /* ============================================================

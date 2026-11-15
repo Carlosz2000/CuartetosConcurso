@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const elCred = document.getElementById('adminCredencial');
   if (elCred) elCred.textContent = `${adminSesion.nombre || adminSesion.nombres || 'Admin'} · ${(adminSesion.rol || 'administrador').toUpperCase()}`;
 
-  // Navegación por tabs
+  // Navegación por tabs (Se añadió 'leaderboard' a la UI si está mapeado)
   document.querySelectorAll('[data-admin-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       activeAdminTab = btn.dataset.adminTab;
@@ -58,7 +58,7 @@ async function renderAdminTab() {
     case 's4': cont.innerHTML = await renderS4(); bindS4(); break;  
     case 's5': cont.innerHTML = await renderS5(); bindS5(); break;
     case 's6': cont.innerHTML = await renderS6(); bindS6(); break;
-    case 's7': cont.innerHTML = await renderS7(); bindS7(); break;
+    case 's7': cont.innerHTML = await renderS7(); bindS7(); bindS7(); break;
   }
 }
 
@@ -338,7 +338,6 @@ async function renderS5() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada;
 
-  // Consulta jurados activos en Supabase (id_rol = 7)
   const { data: juradosBD, error } = await supabase
     .from('usuario')
     .select('*')
@@ -443,7 +442,6 @@ async function renderS5() {
         </div>
       </div>
 
-      <!-- TABLA MEJORADA CON SEPARACIÓN AMPLIA Y FORMATO LIMPIO -->
       <h4 style="margin-top:28px; margin-bottom:14px; font-size:16px;">📋 Nómina de Jurados Registrados (Supabase)</h4>
       <div style="background:#fff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
         <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
@@ -516,7 +514,6 @@ function bindS5() {
         return;
       }
 
-      // Registro en Supabase asignando id_rol = 7
       const { error } = await supabase
         .from('usuario')
         .insert([{
@@ -548,7 +545,7 @@ function bindS5() {
     });
   }
 
-const formTerna = document.getElementById('formAsignarTerna');
+  const formTerna = document.getElementById('formAsignarTerna');
   if (formTerna) {
     formTerna.addEventListener('submit', async e => {
       e.preventDefault();
@@ -581,7 +578,6 @@ const formTerna = document.getElementById('formAsignarTerna');
         }
       }
 
-      // PERSISTIR TERNA PARA QUE CRONOGRAMA (S4) LA LEA
       const ternasExistentes = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
       ternasExistentes[aud] = [jA, jB, jC];
       localStorage.setItem('concurso_ternas_auditorio', JSON.stringify(ternasExistentes));
@@ -608,17 +604,11 @@ async function renderS6() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
 
-  // 1. Obtener cuartetos inscritos directamente de Supabase
-  const { data: cuartetosBD, error: errCuartetos } = await supabase
+  const { data: cuartetosBD } = await supabase
     .from('cuarteto')
     .select('*')
     .eq('estado_inscripcion', 'Inscrito');
 
-  if (errCuartetos) {
-    console.error('⚠️ Error al consultar cuartetos en S6:', errCuartetos.message);
-  }
-
-  // 2. Obtener evaluaciones registradas defensivamente
   let listaEvaluaciones = [];
   try {
     const { data: evaluacionesBD } = await supabase
@@ -629,37 +619,21 @@ async function renderS6() {
     console.warn('⚠️ No se pudo leer la tabla evaluacion:', err);
   }
 
-  // 3. Obtener ternas asignadas desde S5
   const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
-
   const listaCuartetos = cuartetosBD || [];
 
   const evaluacionesMapeadas = listaCuartetos.map(c => {
     const evs = listaEvaluaciones.filter(e => e.id_cuarteto === c.id_cuarteto || e.codigo_cuarteto === c.codigo_cuarteto);
-    
-    // Recuperar la terna configurada para el auditorio del cuarteto
     const ternaAuditorio = ternasGuardadas[c.auditorio] || ['Jurado A', 'Jurado B', 'Jurado C'];
 
     const getNota = (letra, index) => {
       const e = evs.find(x => x.etiqueta_jurado === letra);
-      
-      // Si ya hay nota en BD usa el nombre guardado, sino muestra el jurado asignado en S5
       const nombreJuradoAsignado = ternaAuditorio[index] || `Jurado ${letra}`;
       
       if (!e) {
-        return { 
-          jurado: nombreJuradoAsignado, 
-          valor: null, 
-          inmutable: false, 
-          fecha: '' 
-        };
+        return { jurado: nombreJuradoAsignado, valor: null, inmutable: false, fecha: '' };
       }
-      return { 
-        jurado: e.nombre_jurado || nombreJuradoAsignado, 
-        valor: e.nota, 
-        inmutable: !!e.inmutable, 
-        fecha: e.fecha_evaluacion || '' 
-      };
+      return { jurado: e.nombre_jurado || nombreJuradoAsignado, valor: e.nota, inmutable: !!e.inmutable, fecha: e.fecha_evaluacion || '' };
     };
 
     return {
@@ -798,7 +772,6 @@ function bindS6() {
 
       if (!confirm(`¿Confirmar DESCALIFICACIÓN de ${nombreCuarteto}? Esta acción es irreversible y liberará su turno en el cronograma (RNF-26).`)) return;
 
-      // UPDATE EN SUPABASE: Cambia estado a Descalificado y LIBERA auditorio/horario
       const { error } = await supabase
         .from('cuarteto')
         .update({
@@ -832,71 +805,17 @@ function bindS6() {
 }
 
 /* ============================================================================
-   S7 · RANKING, CLASIFICACIÓN, PUBLICACIÓN Y CIERRE (HU-19 a HU-22) - 100% SUPABASE
+   S7 · RANKING, CLASIFICACIÓN, LEADERBOARD Y CIERRE (HU-19 a HU-22) - SUPABASE
    ============================================================================ */
-async function calcularRankingOrdenadoBD() {
-  const { data: cuartetosBD } = await supabase
-    .from('cuarteto')
-    .select(`
-      id_cuarteto,
-      nombre_cuarteto,
-      codigo_cuarteto,
-      auditorio,
-      estado_presentacion,
-      motivo_descalificacion,
-      evaluacion (
-        etiqueta_jurado,
-        nota,
-        inmutable
-      )
-    `)
-    .eq('estado_inscripcion', 'Inscrito');
-
-  const lista = cuartetosBD || [];
-  const activos = lista.filter(c => c.estado_presentacion !== 'Descalificado');
-  const descalificados = lista.filter(c => c.estado_presentacion === 'Descalificado');
-
-  const filas = activos.map(c => {
-    const evs = c.evaluacion || [];
-    const evA = evs.find(e => e.etiqueta_jurado === 'A' && e.inmutable);
-    const evB = evs.find(e => e.etiqueta_jurado === 'B' && e.inmutable);
-    const evC = evs.find(e => e.etiqueta_jurado === 'C' && e.inmutable);
-
-    const notaA = evA ? Number(evA.nota) : null;
-    const notaB = evB ? Number(evB.nota) : null;
-    const notaC = evC ? Number(evC.nota) : null;
-
-    const completo = (notaA !== null && notaB !== null && notaC !== null);
-    const promedio = completo ? Number(((notaA + notaB + notaC) / 3).toFixed(2)) : 0;
-
-    return {
-      idCuarteto: c.id_cuarteto,
-      nombreCuarteto: c.nombre_cuarteto,
-      codigoCuarteto: c.codigo_cuarteto || (`#${c.id_cuarteto}`),
-      auditorio: c.auditorio || 'Sin Asignar',
-      notaA, notaB, notaC,
-      completo, promedio
-    };
-  });
-
-  filas.sort((x, y) => y.promedio - x.promedio);
-
-  return { ranking: filas, descalificados };
-}
-
 async function renderS7() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada;
 
-  // 1. Obtener cuartetos inscritos de Supabase
-  const { data: cuartetosBD, error: errC } = await supabase
+  const { data: cuartetosBD } = await supabase
     .from('cuarteto')
     .select('*')
     .eq('estado_inscripcion', 'Inscrito');
 
-  if (errC) console.error('⚠️ Error al consultar cuartetos en S7:', errC.message);
-
-  // 2. Obtener evaluaciones defensivamente
   let listaEvaluaciones = [];
   try {
     const { data: evsBD } = await supabase
@@ -909,13 +828,12 @@ async function renderS7() {
 
   const cuartetos = cuartetosBD || [];
 
-  // 3. Procesar y calcular ranking (excluyendo descalificados)
   const rankingProcesado = cuartetos.map(c => {
     const esDescalificado = c.estado_presentacion === 'Descalificado';
     const evsCuarteto = listaEvaluaciones.filter(e => e.id_cuarteto === c.id_cuarteto || e.codigo_cuarteto === c.codigo_cuarteto);
 
     const getNota = (letra) => {
-      const e = evsCuarteto.find(x => x.etiqueta_jurado === letra);
+      const e = evsCuarteto.find(x => x.etiqueta_jurado === letra && x.inmutable);
       return e ? Number(e.nota) : null;
     };
 
@@ -924,8 +842,9 @@ async function renderS7() {
     const notaC = getNota('C');
 
     const notasValidas = [notaA, notaB, notaC].filter(n => n !== null);
-    const promedio = notasValidas.length > 0 
-      ? Number((notasValidas.reduce((acc, val) => acc + val, 0) / notasValidas.length).toFixed(2)) 
+    const tieneTresNotas = notasValidas.length === 3;
+    const promedio = tieneTresNotas 
+      ? Number((notasValidas.reduce((acc, val) => acc + val, 0) / 3).toFixed(2)) 
       : 0;
 
     return {
@@ -937,12 +856,18 @@ async function renderS7() {
       notaB: notaB !== null ? notaB.toFixed(2) : '—',
       notaC: notaC !== null ? notaC.toFixed(2) : '—',
       promedio: promedio,
+      tieneTresNotas: tieneTresNotas,
       descalificado: esDescalificado,
       motivo: c.motivo_descalificacion || ''
     };
   });
 
-  const rankingOficial = rankingProcesado
+  // Leaderboard filtrado exclusivamente por los que tienen 3 notas completas y ordenados de mayor a menor promedio
+  const leaderboardOficial = rankingProcesado
+    .filter(q => !q.descalificado && q.tieneTresNotas)
+    .sort((a, b) => b.promedio - a.promedio);
+
+  const rankingGeneral = rankingProcesado
     .filter(q => !q.descalificado && q.auditorio)
     .sort((a, b) => b.promedio - a.promedio);
 
@@ -952,15 +877,15 @@ async function renderS7() {
     <div class="card">
       <div class="ficha-header">
         <div>
-          <h2>🏆 Subsistema 7 · Ranking Global, Clasificación, Publicación y Cierre</h2>
-          <p class="subtitle">HU-19 · HU-20 · HU-21 · HU-22 · RF-46 a RF-54</p>
+          <h2>🏆 Subsistema 7 · Leaderboard, Ranking y Cierre</h2>
+          <p class="subtitle">HU-19 a HU-22 · RF-46 a RF-54</p>
         </div>
         <div>
           <span class="badge ${estadoConcurso.fase_eliminatoria_estado === 'Concluida' ? 'badge-ok' : 'badge-obs'}">
             FASE: ${estadoConcurso.fase_eliminatoria_estado || 'EN CURSO'}
           </span>
           <span class="badge ${estadoConcurso.portal_publicado ? 'badge-ok' : 'badge-rej'}">
-            ${estadoConcurso.portal_publicado ? '🌐 PORTAL PÚBLICO: PUBLICADO' : '🔒 PORTAL PÚBLICO: NO PUBLICADO'}
+            ${estadoConcurso.portal_publicado ? '🌐 LEADERBOARD: PUBLICADO' : '🔒 LEADERBOARD: NO PUBLICADO'}
           </span>
         </div>
       </div>
@@ -971,11 +896,60 @@ async function renderS7() {
         </p>
       </div>
 
-      <!-- CONTENEDOR DE FEEDBACK PARA EVITAR ERROR NULL -->
       <div id="s7FeedbackGlobal" style="margin-bottom:14px;"></div>
 
-      <!-- TABLA DE RANKING OFICIAL -->
-      <h4 style="margin-bottom:10px; font-size:15px;">📊 Cuadro de Méritos y Promedios (RF-46)</h4>
+      <!-- SECCIÓN LEADERBOARD: 3 NOTAS Y ORDENADOS DE MAYOR A MENOR -->
+      <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          <div>
+            <h4 style="margin:0; font-size:16px; color:var(--primary);">🏆 Leaderboard Oficial (Cuartetos con 3 Notas Completas)</h4>
+            <p style="font-size:12px; color:var(--muted); margin:2px 0 0 0;">Ordenado estrictamente de mayor a menor promedio.</p>
+          </div>
+          <button type="button" class="btn ${estadoConcurso.portal_publicado ? 'btn-danger' : 'btn-success'}" id="btnTogglePublicacion" style="padding:6px 14px; font-size:13px;">
+            ${estadoConcurso.portal_publicado ? '🔒 Ocultar Leaderboard a Representantes' : '📢 Publicar Leaderboard a Representantes'}
+          </button>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px; background:#fff; border-radius:8px; overflow:hidden;">
+          <thead>
+            <tr style="background:#f1f5f9; border-bottom:1px solid var(--border); color:var(--muted); font-weight:700;">
+              <th style="padding:10px 14px;">Puesto</th>
+              <th style="padding:10px 14px;">Cuarteto</th>
+              <th style="padding:10px 14px;">Auditorio</th>
+              <th style="padding:10px 14px; text-align:center;">Nota A</th>
+              <th style="padding:10px 14px; text-align:center;">Nota B</th>
+              <th style="padding:10px 14px; text-align:center;">Nota C</th>
+              <th style="padding:10px 14px; text-align:center;">Promedio Final</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${leaderboardOficial.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align:center; padding:20px; color:var(--muted);">
+                  Ningún cuarteto ha completado aún sus 3 notas inmutables por el jurado.
+                </td>
+              </tr>
+            ` : leaderboardOficial.map((q, idx) => `
+              <tr style="border-bottom:1px solid #f1f5f9; background:${idx === 0 ? '#fefce8' : '#fff'};">
+                <td style="padding:10px 14px; font-weight:800; color:var(--primary);">#${idx + 1}</td>
+                <td style="padding:10px 14px;"><strong>${q.nombre}</strong><br><small style="color:var(--muted);">${q.codigo}</small></td>
+                <td style="padding:10px 14px; color:var(--muted);">${q.auditorio}</td>
+                <td style="padding:10px 14px; text-align:center; font-family:monospace;">${q.notaA}</td>
+                <td style="padding:10px 14px; text-align:center; font-family:monospace;">${q.notaB}</td>
+                <td style="padding:10px 14px; text-align:center; font-family:monospace;">${q.notaC}</td>
+                <td style="padding:10px 14px; text-align:center;">
+                  <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:700; font-size:14px;">
+                    ${q.promedio.toFixed(2)}
+                  </span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- TABLA GENERAL DE MÉRITOS -->
+      <h4 style="margin-bottom:10px; font-size:15px;">📊 Cuadro General de Méritos (RF-46)</h4>
       <div style="background:#fff; border-radius:10px; border:1px solid var(--border); overflow:hidden; margin-bottom:20px;">
         <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
           <thead>
@@ -986,17 +960,17 @@ async function renderS7() {
               <th style="padding:12px 16px; width:10%; text-align:center;">Jurado A</th>
               <th style="padding:12px 16px; width:10%; text-align:center;">Jurado B</th>
               <th style="padding:12px 16px; width:10%; text-align:center;">Jurado C</th>
-              <th style="padding:12px 16px; width:15%; text-align:center;">Promedio Final</th>
+              <th style="padding:12px 16px; width:15%; text-align:center;">Promedio Parcial</th>
             </tr>
           </thead>
           <tbody>
-            ${rankingOficial.length === 0 ? `
+            ${rankingGeneral.length === 0 ? `
               <tr>
                 <td colspan="7" style="text-align:center; padding:24px; color:var(--muted);">
-                  No hay cuartetos evaluados y programados en el ranking oficial.
+                  No hay cuartetos evaluados y programados en el ranking.
                 </td>
               </tr>
-            ` : rankingOficial.map((q, idx) => `
+            ` : rankingGeneral.map((q, idx) => `
               <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:12px 16px; font-weight:800; color:var(--primary);">#${idx + 1}</td>
                 <td style="padding:12px 16px;">
@@ -1007,7 +981,7 @@ async function renderS7() {
                 <td style="padding:12px 16px; text-align:center; font-family:monospace;">${q.notaB}</td>
                 <td style="padding:12px 16px; text-align:center; font-family:monospace;">${q.notaC}</td>
                 <td style="padding:12px 16px; text-align:center;">
-                  <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:12px; font-weight:700;">
+                  <span style="background:#f1f5f9; color:var(--ink); padding:4px 10px; border-radius:12px; font-weight:700;">
                     ${q.promedio.toFixed(2)}
                   </span>
                 </td>
@@ -1028,14 +1002,10 @@ async function renderS7() {
         </div>
       ` : ''}
 
-      <!-- ACCIONES DE CIERRE Y CONSOLIDACIÓN -->
       <h4 style="margin-bottom:12px; font-size:15px;">⚙️ Acciones de Consolidación y Cierre (HU-20 a HU-22)</h4>
       <div style="display:flex; gap:12px; flex-wrap:wrap;">
         <button type="button" class="btn btn-secondary" id="btnConsolidarFase" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
           1️⃣ Cerrar y Consolidar Fase (HU-20)
-        </button>
-        <button type="button" class="btn btn-secondary" id="btnPublicarCuadro" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
-          2️⃣ Publicar Cuadro Oficial (HU-21)
         </button>
         <button type="button" class="btn btn-danger" id="btnArchivarEdicion" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
           3️⃣ Finalizar y Archivar Edición (HU-22)
@@ -1047,6 +1017,28 @@ async function renderS7() {
 
 function bindS7() {
   const fb = document.getElementById('s7FeedbackGlobal');
+
+  // Toggle Publicación Leaderboard (HU-21)
+  const btnTogglePub = document.getElementById('btnTogglePublicacion');
+  if (btnTogglePub) {
+    btnTogglePub.addEventListener('click', async () => {
+      const estadoActual = btnTogglePub.textContent.includes('Ocultar');
+      const nuevoEstado = !estadoActual;
+
+      const { error } = await supabase
+        .from('configuracion_concurso')
+        .update({ portal_publicado: nuevoEstado })
+        .eq('id', 1);
+
+      if (error) {
+        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al cambiar estado de publicación: ${error.message}</div>`;
+        return;
+      }
+
+      notificar(nuevoEstado ? '📢 Leaderboard publicado con éxito para los representantes.' : '🔒 Leaderboard ocultado.', 'ok');
+      await renderAdminTab();
+    });
+  }
 
   // 1. Cerrar y Consolidar Fase (HU-20)
   const btnConsolidar = document.getElementById('btnConsolidarFase');
@@ -1065,27 +1057,6 @@ function bindS7() {
       }
 
       notificar('✅ Fase eliminatoria cerrada y consolidada con éxito (HU-20).', 'ok');
-      await renderAdminTab();
-    });
-  }
-
-  // 2. Publicar Cuadro Oficial (HU-21)
-  const btnPublicar = document.getElementById('btnPublicarCuadro');
-  if (btnPublicar) {
-    btnPublicar.addEventListener('click', async () => {
-      if (!confirm('¿Desea publicar el cuadro oficial de méritos en el portal público? (HU-21)')) return;
-
-      const { error } = await supabase
-        .from('configuracion_concurso')
-        .update({ portal_publicado: true })
-        .eq('id', 1);
-
-      if (error) {
-        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al publicar cuadro: ${error.message}</div>`;
-        return;
-      }
-
-      notificar('🌐 Cuadro oficial publicado en el portal público con éxito (HU-21).', 'ok');
       await renderAdminTab();
     });
   }
