@@ -14,9 +14,21 @@ import {
 let juradoSesion = null;
 let juradoCuenta = null;
 
+// 🔒 BLINDAJE DE SEGURIDAD POR ROL AL CARGAR LA VISTA
 document.addEventListener('DOMContentLoaded', async () => {
-  juradoSesion = requireRol('jurado'); // RNF-24: Acceso exclusivo del rol
-  if (!juradoSesion) return;
+  try {
+    // Valida estrictamente que la sesión pertenezca al rol 'jurado'
+    juradoSesion = requireRol('jurado'); 
+  } catch (e) {
+    console.warn('⚠️ Intento de acceso no autorizado detectado en panel de jurado:', e);
+    window.location.replace('login.html');
+    return;
+  }
+
+  if (!juradoSesion || juradoSesion.rol !== 'jurado') {
+    window.location.replace('login.html');
+    return;
+  }
 
   // Cargar datos de la cuenta del jurado autenticado desde Supabase
   juradoCuenta = await obtenerDatosJuradoBD(juradoSesion.email);
@@ -28,6 +40,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await renderSesionJurado();
 });
+
+/**
+ * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B o C
+ * basándose en la terna configurada en el Subsistema 5 para su auditorio.
+ */
+function obtenerEtiquetaDinamicaJurado(cuentaJurado) {
+  if (!cuentaJurado) return 'C';
+  
+  const nombreJuradoLogueado = `${cuentaJurado.nombres || ''} ${cuentaJurado.apellidos || ''}`.trim().toLowerCase();
+  const auditorioAsignado = cuentaJurado.auditorio || 'Auditorio Principal';
+
+  // Leer las ternas configuradas en S5 (localStorage)
+  const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
+  const ternaAuditorio = ternasGuardadas[auditorioAsignado] || [];
+
+  // Buscar el índice del jurado en la terna (0 = A, 1 = B, 2 = C)
+  for (let i = 0; i < ternaAuditorio.length; i++) {
+    const juradoTernaNorm = ternaAuditorio[i].trim().toLowerCase();
+    if (juradoTernaNorm === nombreJuradoLogueado || juradoTernaNorm.includes(nombreJuradoLogueado) || nombreJuradoLogueado.includes(juradoTernaNorm)) {
+      if (i === 0) return 'A';
+      if (i === 1) return 'B';
+      if (i === 2) return 'C';
+    }
+  }
+
+  return cuentaJurado.etiqueta || 'C';
+}
 
 /* ---------- Render principal de la sesión del jurado ---------- */
 async function renderSesionJurado() {
@@ -46,7 +85,9 @@ async function renderSesionJurado() {
 
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
-  const miEtiqueta = juradoCuenta.etiqueta || 'C';
+  
+  // Asignación dinámica correcta de la etiqueta (A, B o C)
+  const miEtiqueta = obtenerEtiquetaDinamicaJurado(juradoCuenta);
 
   // RF-39: Consultar únicamente los cuartetos asignados estrictamente a su auditorio
   const misCuartetos = await obtenerCuartetosPorAuditorioBD(juradoCuenta.auditorio);
@@ -138,8 +179,8 @@ async function renderSesionJurado() {
           </div>
         `;
       }).join('')}
-  </div>
-`;
+    </div>
+  `;
 
   bindEventsJurado(miEtiqueta);
 }

@@ -49,7 +49,6 @@ tabRegister.addEventListener('click', () => {
 document.querySelectorAll('.toggle-pass').forEach(btn => {
     btn.addEventListener('click', () => {
         const input = document.getElementById(btn.dataset.target);
-
         input.type = input.type === 'password' ? 'text' : 'password';
     });
 });
@@ -57,12 +56,13 @@ document.querySelectorAll('.toggle-pass').forEach(btn => {
 // Destinos según el rol
 const destinos = {
     alumno: 'index.html',
+    representante: 'representante.html',
     profesor: 'profesor.html',
     administrador: 'admin.html',
     jurado: 'jurado.html'
 };
 
-// Obtener perfil y redireccionar
+// Obtener perfil y redireccionar con validación inteligente
 async function redirigirSegunRol(authUserId) {
     const perfil = await obtenerPerfilUsuario(authUserId);
 
@@ -70,15 +70,47 @@ async function redirigirSegunRol(authUserId) {
         throw new Error('No se pudo encontrar la información del perfil del usuario.');
     }
 
-    // 1. Declarar correctamente la variable del rol antes de consultar el objeto de destinos
     const rol = (perfil.rol || '').toLowerCase();
-    const destino = destinos[rol];
+    let destino = destinos[rol];
 
     if (!destino) {
         throw new Error(`No existe una página configurada para el rol '${perfil.rol}'.`);
     }
 
-    // 2. Guardar en la sesión con las propiedades de ID esperadas
+    // ⭐ VALIDACIÓN ESPECIAL PARA ALUMNO / REPRESENTANTE:
+    // Si el rol es alumno o representante, verificamos si ya tiene un cuarteto registrado en Supabase.
+    if (rol === 'alumno' || rol === 'representante') {
+        const userIdFinal = perfil.id_usuario || perfil.id || authUserId;
+        const userEmail = perfil.correo_institucional || perfil.email || '';
+
+        let cuartetos = null;
+        
+        // Buscar por id_representante
+        const resId = await supabase
+            .from('cuarteto')
+            .select('id_cuarteto')
+            .eq('id_representante', userIdFinal);
+        
+        cuartetos = resId.data;
+
+        // Si no se encontró por ID, buscar por correo de contacto
+        if ((!cuartetos || cuartetos.length === 0) && userEmail) {
+            const resEmail = await supabase
+                .from('cuarteto')
+                .select('id_cuarteto')
+                .eq('correo_contacto', userEmail);
+            cuartetos = resEmail.data;
+        }
+
+        // Si YA tiene un cuarteto registrado, redirigir directo a su portal, si no, a la inscripción
+        if (cuartetos && cuartetos.length > 0) {
+            destino = 'representante.html';
+        } else {
+            destino = 'index.html';
+        }
+    }
+
+    // Guardar en la sesión con las propiedades de ID esperadas
     sessionStorage.setItem('competia_session', JSON.stringify({
         id: perfil.id || authUserId,
         id_usuario: perfil.id_usuario || perfil.id || authUserId,
@@ -87,7 +119,7 @@ async function redirigirSegunRol(authUserId) {
         rol: rol
     }));
 
-    // 3. Redireccionar al panel
+    // Redireccionar al panel correspondiente
     window.location.href = destino;
 }
 
@@ -96,9 +128,7 @@ formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearError(loginError);
 
-    const email = document.getElementById('loginEmail')
-        .value.trim().toLowerCase();
-
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
     const password = document.getElementById('loginPassword').value;
 
     const boton = formLogin.querySelector('button[type="submit"]');
@@ -163,8 +193,7 @@ formRegister.addEventListener('submit', async (e) => {
         }
 
         if (authData.user) {
-            // 2. Insertar explícitamente el perfil en tu tabla pública 'usuario'
-            // Usamos id_rol = 1 (Alumno / Representante)
+            // 2. Insertar explícitamente el perfil en la tabla pública 'usuario'
             const { error: insertError } = await supabase
                 .from('usuario')
                 .insert([

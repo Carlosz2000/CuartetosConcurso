@@ -26,21 +26,40 @@ export function segundosAMmSs(segundos) {
 }
 
 /**
- * Obtiene el catálogo de obras obligatorias activas (RNF-01: Orden alfabético)
+ * Obtiene SOLO las obras obligatorias ACTIVAS (Para el formulario de inscripción de representantes)
  */
 export async function obtenerObrasObligatoriasBD() {
   try {
     const { data, error } = await supabase
       .from('obra')
       .select('*')
-      .eq('tipo_obra', 'obligatoria') // <--- Coincide con tu columna tipo_obra
-      .eq('estado', true)             // <--- Coincide con tu columna estado (bool)
+      .eq('tipo_obra', 'obligatoria')
+      .eq('estado', true) // Solo activas para los estudiantes/representantes
       .order('titulo', { ascending: true });
 
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Error al consultar catálogo de obras obligatorias:', err.message);
+    console.error('Error al consultar catálogo de obras obligatorias activas:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Obtiene TODAS las obras obligatorias (ACTIVAS E INACTIVAS) - Exclusivo para el Panel Admin
+ */
+export async function obtenerTodasLasObrasObligatoriasBD() {
+  try {
+    const { data, error } = await supabase
+      .from('obra')
+      .select('*')
+      .eq('tipo_obra', 'obligatoria')
+      .order('titulo', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Error al consultar todas las obras obligatorias:', err.message);
     return [];
   }
 }
@@ -52,11 +71,9 @@ export async function registrarObraObligatoriaBD(titulo, compositor, duracionInp
   const tituloClean = titulo ? titulo.trim() : '';
   const compositorClean = compositor ? compositor.trim() : '';
 
-  // RF-02 / CA3: Validación de campos obligatorios
   if (!tituloClean) throw new Error('El campo Título es obligatorio.');
   if (!compositorClean) throw new Error('El campo Compositor es obligatorio.');
 
-  // RF-04: Impedir duplicados por título
   const { data: existente } = await supabase
     .from('obra')
     .select('id_obra')
@@ -74,10 +91,25 @@ export async function registrarObraObligatoriaBD(titulo, compositor, duracionInp
     .insert([{
       titulo: tituloClean,
       compositor: compositorClean,
-      duracion_estimada: duracionSegundos, // <--- Guardado como entero int4 en segundos
+      duracion_estimada: duracionSegundos,
       tipo_obra: 'obligatoria',
-      estado: true
+      estado: true // Por defecto activa al registrarse
     }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Cambia el estado (true/false) de una obra obligatoria (Activar / Desactivar)
+ */
+export async function cambiarEstadoObraBD(idObra, nuevoEstadoBool) {
+  const { data, error } = await supabase
+    .from('obra')
+    .update({ estado: nuevoEstadoBool })
+    .eq('id_obra', idObra)
     .select()
     .single();
 

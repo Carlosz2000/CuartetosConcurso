@@ -20,22 +20,6 @@ function parseJSONSeguro(valor, valorPorDefecto = null) {
   }
 }
 
-/* Nómina Oficial de Jurados Evaluadores (S5) */
-const JURADOS_CATALOGO = [
-  { id: 1, nombre: 'Dra. Beatriz Morales', especialidad: 'Música de Cámara y Violín', correo: 'bmorales@cons.pe', dni: '45678912', institucion: 'Conservatorio Nacional', ternaAuditorio: 'Auditorio Principal' },
-  { id: 2, nombre: 'Dr. Luis Paredes', especialidad: 'Violín Solista', correo: 'lparedes@cons.pe', dni: '23456789', institucion: 'Orquesta Sinfónica Nacional', ternaAuditorio: 'Auditorio Principal' },
-  { id: 3, nombre: 'Mg. Ana Torres', especialidad: 'Viola y Práctica Orquestal', correo: 'atorres@cons.pe', dni: '34567890', institucion: 'Ensamble de Cuerdas', ternaAuditorio: 'Auditorio Principal' },
-  { id: 4, nombre: 'Dr. Carlos Mendoza', especialidad: 'Violonchelo y Cuartetos', correo: 'cmendoza@cons.pe', dni: '45678901', institucion: 'Conservatorio Nacional', ternaAuditorio: 'Auditorio B — Sala Beethoven' },
-  { id: 5, nombre: 'Dra. María Salazar', especialidad: 'Violonchelo Barroco', correo: 'msalazar@cons.pe', dni: '56789012', institucion: 'Academia Filarmónica', ternaAuditorio: 'Auditorio B — Sala Beethoven' },
-  { id: 6, nombre: 'Mtro. Eduardo Valdivia', especialidad: 'Violín Primero y Concertino', correo: 'evaldivia@cons.pe', dni: '67890123', institucion: 'Sinfónica Juvenil', ternaAuditorio: 'Auditorio B — Sala Beethoven' },
-  { id: 7, nombre: 'Dra. Patricia Sotomayor', especialidad: 'Viola de Concierto', correo: 'psotomayor@cons.pe', dni: '78901234', institucion: 'Conservatorio de Lima', ternaAuditorio: 'Auditorio C — Sala Mozart' },
-  { id: 8, nombre: 'Dr. Gonzalo Cárdenas', especialidad: 'Violonchelo y Ensamble', correo: 'gcardenas@cons.pe', dni: '89012345', institucion: 'Camerata Filarmónica', ternaAuditorio: 'Auditorio C — Sala Mozart' },
-  { id: 9, nombre: 'Mg. Valeria Benavides', especialidad: 'Violín y Cuarteto Clásico', correo: 'vbenavides@cons.pe', dni: '90123456', institucion: 'Orquesta de Cámara', ternaAuditorio: 'Auditorio C — Sala Mozart' },
-  { id: 10, nombre: 'Dr. Andrés Holguín', especialidad: 'Dirección Orquestal y Cuerdas', correo: 'aholguin@cons.pe', dni: '11223344', institucion: 'Sociedad Filarmónica', ternaAuditorio: 'Sala de Cámara' },
-  { id: 11, nombre: 'Dra. Carmen Revilla', especialidad: 'Viola y Análisis Interpretativo', correo: 'crevilla@cons.pe', dni: '22334455', institucion: 'Instituto de Música', ternaAuditorio: 'Sala de Cámara' },
-  { id: 12, nombre: 'Mtro. Diego Seminario', especialidad: 'Violonchelo y Continuo', correo: 'dseminario@cons.pe', dni: '33445566', institucion: 'Orquesta Sinfónica Nacional', ternaAuditorio: 'Sala de Cámara' }
-];
-
 /* Catálogo Oficial de Auditorios */
 const AUDITORIOS_BASE = [
   { id: 'aud-principal', nombre: 'Auditorio Principal', sede: 'Sede Central', capacidad: 400, terna: ['Dra. Beatriz Morales', 'Dr. Luis Paredes', 'Mg. Ana Torres'] },
@@ -114,17 +98,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   configurarEventos();
 });
 
-function cargarDatos() {
-  const progsGuardadas = localStorage.getItem(STORAGE_KEY_PROGRAMACIONES);
-  const datos = parseJSONSeguro(progsGuardadas, null);
-  if (datos && Array.isArray(datos)) {
-    programaciones = datos;
-  } else {
-    programaciones = [];
-    guardarDatos();
-  }
-}
-
 function guardarDatos() {
   localStorage.setItem(STORAGE_KEY_PROGRAMACIONES, JSON.stringify(programaciones));
 }
@@ -159,7 +132,6 @@ async function inicializarSelectoresAuditorioYCuarteto() {
   const cuartetoActual = selectCuarteto.value;
 
   try {
-    // CONSULTA CLAVE: Inscritos Y que NO estén descalificados
     const { data: cuartetosBD, error } = await supabase
       .from('cuarteto')
       .select('*')
@@ -486,7 +458,6 @@ function actualizarResumenTurno() {
   }
 }
 
-/* Helper: Convertir formato "03:30 PM" a minutos para ordenamiento cronológico real */
 function horaAMinutos(horaStr) {
   if (!horaStr) return 0;
   const partes = horaStr.split(' ');
@@ -501,9 +472,6 @@ function horaAMinutos(horaStr) {
   return horas * 60 + minutos;
 }
 
-/* ============================================================
-   TABLA DE CRONOGRAMA CON ORDEN CRONOLÓGICO REAL
-   ============================================================ */
 function renderTablaCronograma() {
   const tbody = document.getElementById('cronogramaTableBody');
   if (!tbody) return;
@@ -520,7 +488,6 @@ function renderTablaCronograma() {
     return;
   }
 
-  // Ordenar por Fecha y luego por Hora en minutos reales
   const ordenados = [...programaciones].sort((a, b) => {
     const compFecha = a.fecha.localeCompare(b.fecha);
     if (compFecha !== 0) return compFecha;
@@ -592,27 +559,11 @@ function configurarEventos() {
     });
   }
 
-  const btnRestablecer = document.getElementById('btnRestablecer');
-  if (btnRestablecer) {
-    btnRestablecer.addEventListener('click', () => {
-      if (confirm('¿Restablecer los datos de cronograma y auditorios?')) {
-        programaciones = [];
-        horarioSeleccionadoActual = null;
-        guardarDatos();
-        inicializarSelectoresAuditorioYCuarteto().then(() => renderTodo());
-        mostrarAlertaExito('Datos de cronograma restablecidos.');
-      }
-    });
-  }
-
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') cerrarTodosLosModales();
   });
 }
 
-/* ============================================================
-   PROGRAMAR Y LIBERAR CON ACTUALIZACIÓN REAL EN SUPABASE
-   ============================================================ */
 async function ejecutarProgramacionTurno() {
   const selCuarteto = document.getElementById('selectCuarteto');
   const selAud = document.getElementById('selectAuditorio');
@@ -633,7 +584,6 @@ async function ejecutarProgramacionTurno() {
   const cuarteto = getCuartetoPorCodigo(codigoCuarteto);
   const auditorio = getAuditorioPorId(auditorioId);
 
-  // Validaciones
   const progExistenteCuarteto = getProgramacionDeCuarteto(codigoCuarteto);
   if (progExistenteCuarteto) {
     mostrarModalError(
@@ -649,7 +599,6 @@ async function ejecutarProgramacionTurno() {
     return;
   }
 
-  // 1️⃣ UPDATE EN SUPABASE FILTRANDO POR codigo_cuarteto
   const { error } = await supabase
     .from('cuarteto')
     .update({
@@ -666,7 +615,6 @@ async function ejecutarProgramacionTurno() {
     return;
   }
 
-  // 2️⃣ Actualización en estado local
   const nuevoTurno = {
     id: `prog-${Date.now()}`,
     cuartetoId: cuarteto.id,
@@ -709,8 +657,6 @@ async function confirmarLiberar(progId) {
   if (!prog) return;
 
   if (confirm(`¿Liberar el turno en ${prog.auditorioNombre} (${prog.fecha} · ${prog.hora}) asignado a ${prog.cuartetoNombre}?`)) {
-    
-    // Actualización segura en Supabase usando codigo_cuarteto
     if (prog.codigoCuarteto) {
       const { error } = await supabase
         .from('cuarteto')
@@ -852,7 +798,6 @@ async function ejecutarReprogramacion() {
 
   const nuevoAud = getAuditorioPorId(nuevoAudId);
 
-  // UPDATE EN SUPABASE FILTRANDO POR codigo_cuarteto
   const { error } = await supabase
     .from('cuarteto')
     .update({
@@ -977,10 +922,10 @@ function cerrarTodosLosModales() {
   document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
 }
 
-function abrirModalCatalogoJurados() {
+async function abrirModalCatalogoJurados() {
   const modal = document.getElementById('modalCatalogoJurados');
   if (!modal) return;
-  renderTablaCatalogoJurados();
+  await renderTablaCatalogoJurados();
   modal.style.display = 'flex';
 }
 
@@ -989,20 +934,66 @@ function cerrarModalCatalogoJurados() {
   if (modal) modal.style.display = 'none';
 }
 
-function renderTablaCatalogoJurados() {
+/* ============================================================
+   CONSULTA DINÁMICA DE JURADOS DESDE SUPABASE (S5)
+   ============================================================ */
+async function renderTablaCatalogoJurados() {
   const tbody = document.getElementById('tablaJuradosBody');
   if (!tbody) return;
 
-  tbody.innerHTML = JURADOS_CATALOGO.map(j => `
-    <tr>
-      <td><strong>#${j.id}</strong></td>
-      <td><strong>${j.nombre}</strong><br><small style="color:var(--muted);">${j.correo}</small></td>
-      <td>${j.especialidad}</td>
-      <td><span class="badge badge-code">${j.dni}</span></td>
-      <td>${j.institucion}</td>
-      <td><span class="table-badge-auditorio" style="font-size:11px;">🏛️ ${j.ternaAuditorio}</span></td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--muted);">Cargando jurados desde Supabase...</td></tr>`;
+
+  try {
+    // Consulta los usuarios con rol de jurado (id_rol = 7) creados en el Subsistema 5
+    const { data: juradosBD, error } = await supabase
+      .from('usuario')
+      .select('*')
+      .eq('id_rol', 7);
+
+    if (error) throw error;
+
+    const listaJurados = juradosBD || [];
+
+    if (listaJurados.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center; padding:24px; color:var(--muted);">
+            No hay jurados registrados en Supabase. Registre cuentas de jurado desde el Subsistema 5 (Panel Administrador).
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = listaJurados.map((j, idx) => {
+      const nombreCompleto = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || 'Sin Nombre';
+      const correoInst = j.correo_institucional || j.correo || '—';
+      const especialidadMus = j.especialidad || 'Música de Cámara';
+      const documentoDni = j.dni || '—';
+      const institucionOrig = j.institucion || 'Conservatorio Nacional';
+
+      return `
+        <tr>
+          <td><strong>#${idx + 1}</strong></td>
+          <td><strong>${nombreCompleto}</strong><br><small style="color:var(--muted);">${correoInst}</small></td>
+          <td>${especialidadMus}</td>
+          <td><span class="badge badge-code">${documentoDni}</span></td>
+          <td>${institucionOrig}</td>
+          <td><span class="table-badge-auditorio" style="font-size:11px;">🏛️ Habilitado (Supabase)</span></td>
+        </tr>
+      `;
+    }).join('');
+
+  } catch (err) {
+    console.error('Error al obtener jurados de Supabase:', err);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; color:var(--danger); padding:20px;">
+          Error al cargar la nómina de jurados: ${err.message}
+        </td>
+      </tr>
+    `;
+  }
 }
 
 // Exportación global de funciones inline

@@ -1,3 +1,5 @@
+// js/representante.js
+import { requireRol } from './core/session.js';
 import { supabase } from '../config/supabase.js';
 
 /* ============================================================
@@ -5,6 +7,8 @@ import { supabase } from '../config/supabase.js';
    Sincronizado con S4 (Cronograma), S6 (Supervisión) y Leaderboard
    Seguridad Estricta: Aislamiento por Cuenta del Representante Creador
    ============================================================ */
+
+let representanteSesion = null;
 
 let StoreRepresentante = {
   ficha: {
@@ -35,7 +39,22 @@ const hoy = () => new Date().toLocaleString('es-PE', {
   hour: '2-digit', minute: '2-digit'
 });
 
+// 🔒 BLINDAJE DE SEGURIDAD POR ROL AL CARGAR LA VISTA
 document.addEventListener('DOMContentLoaded', async function () {
+  try {
+    // Valida estrictamente que la sesión pertenezca al rol 'representante'
+    representanteSesion = requireRol('representante');
+  } catch (e) {
+    console.warn('⚠️ Intento de acceso no autorizado detectado en portal del representante:', e);
+    window.location.replace('login.html');
+    return;
+  }
+
+  if (!representanteSesion || representanteSesion.rol !== 'representante') {
+    window.location.replace('login.html');
+    return;
+  }
+
   // 1. Vincular las pestañas inmediatamente para asegurar la navegación fluida
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', function () {
@@ -53,13 +72,13 @@ document.addEventListener('DOMContentLoaded', async function () {
  */
 async function cargarDatosDesdeSupabase() {
   try {
-    const sessionData = JSON.parse(sessionStorage.getItem('competia_session') || '{}');
+    const sessionData = representanteSesion || JSON.parse(sessionStorage.getItem('competia_session') || '{}');
     const userId = sessionData.id_usuario || sessionData.id;
-    const userEmail = sessionData.correo || sessionData.email;
+    const userEmail = sessionData.correo || sessionData.email || sessionData.correo_institucional;
 
     if (!userId && !userEmail) {
       alert('⚠️ No se encontró una sesión activa válida. Por favor, inicia sesión.');
-      window.location.href = 'landing.html';
+      window.location.replace('login.html');
       return;
     }
 
@@ -90,6 +109,7 @@ async function cargarDatosDesdeSupabase() {
       StoreRepresentante.ficha.nombre = 'Sin Cuarteto Registrado';
       StoreRepresentante.ficha.estado = 'Sin Ficha';
       renderizarVistaSinCuarteto();
+      actualizarEstadoBotonInscripcion('Sin Ficha');
       return;
     }
 
@@ -157,7 +177,34 @@ async function cargarDatosDesdeSupabase() {
   const headerCodigo = $('headerCodigo');
   if (headerCodigo) headerCodigo.textContent = `Cuarteto: ${nombre} (${codigo})`;
 
+  // Actualizar estado del botón de inscripción superior
+  actualizarEstadoBotonInscripcion(StoreRepresentante.ficha.estado);
+
   switchTab('ficha');
+}
+
+/**
+ * Habilita o deshabilita el enlace superior de inscripción según el estado de la ficha.
+ */
+function actualizarEstadoBotonInscripcion(estado) {
+  const linkInsc = $('linkInscripcion');
+  if (!linkInsc) return;
+
+  const estadoNorm = (estado || '').toLowerCase();
+
+  // Si ya está inscrito o validado, se bloquea el botón para evitar nuevas inscripciones
+  if (estadoNorm === 'inscrito' || estadoNorm === 'validado') {
+    linkInsc.setAttribute('href', '#');
+    linkInsc.style.opacity = '0.4';
+    linkInsc.style.pointerEvents = 'none';
+    linkInsc.title = 'Ya te encuentras inscrito en el concurso.';
+  } else {
+    // Si está en rechazado, observado, en borrador o sin ficha, se habilita
+    linkInsc.setAttribute('href', 'index.html');
+    linkInsc.style.opacity = '1';
+    linkInsc.style.pointerEvents = 'auto';
+    linkInsc.title = 'Registrar o corregir inscripción';
+  }
 }
 
 function renderizarVistaSinCuarteto() {
@@ -347,7 +394,6 @@ function renderCitacion() {
    ============================================================ */
 async function renderLeaderboardPublico() {
   try {
-    // 1. Verificar si el admin publicó el cuadro en configuracion_concurso
     const { data: config } = await supabase
       .from('configuracion_concurso')
       .select('portal_publicado')
@@ -365,7 +411,6 @@ async function renderLeaderboardPublico() {
       `;
     }
 
-    // 2. Obtener cuartetos inscritos y evaluaciones
     const { data: cuartetosBD } = await supabase
       .from('cuarteto')
       .select('*')
@@ -465,18 +510,33 @@ async function renderLeaderboardPublico() {
 }
 
 /* ============================================================
-   TAB: RETIRO VOLUNTARIO
+   TAB: RETIRO VOLUNTARIO (Con validación de estado Inscrito/Validado)
    ============================================================ */
 function renderRetiro() {
+  const f = StoreRepresentante.ficha;
+  const estadoNorm = (f.estado || '').toLowerCase();
+  
+  const estaInscritoOficialmente = (estadoNorm === 'inscrito' || estadoNorm === 'validado');
+
   return `
     <div class="card">
       <h2>Retiro Voluntario</h2>
       <p class="subtitle">Gestión de exclusión del concurso</p>
+
+      ${estaInscritoOficialmente ? `
+        <div class="alert alert-warn" style="margin-bottom: 16px;">
+          <div><strong>🔒 Acción no disponible:</strong> Su inscripción ya se encuentra formalizada (estado: <b>${f.estado.toUpperCase()}</b>). Por motivos de organización y cronograma, ya no es posible solicitar el retiro voluntario directamente desde el portal.</div>
+        </div>
+      ` : ''}
+
       <div class="form-row">
         <label>Motivo del retiro</label>
-        <textarea id="motivoRetiro" rows="3" placeholder="Escribe el motivo..."></textarea>
+        <textarea id="motivoRetiro" rows="3" placeholder="Escribe el motivo..." ${estaInscritoOficialmente ? 'disabled' : ''}></textarea>
       </div>
-      <button class="btn btn-danger" id="btnSolicitarRetiro">Solicitar Retiro</button>
+
+      <button class="btn btn-danger" id="btnSolicitarRetiro" ${estaInscritoOficialmente ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>
+        Solicitar Retiro
+      </button>
     </div>
   `;
 }

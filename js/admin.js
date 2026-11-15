@@ -4,8 +4,12 @@
    ============================================================ */
 
 import { requireRol } from './core/session.js';
-import { obtenerObrasObligatoriasBD, registrarObraObligatoriaBD, segundosAMmSs } from './services/obraService.js';
-import { obtenerDocentesHabilitadosBD } from './services/profesorService.js';
+import { 
+  obtenerTodasLasObrasObligatoriasBD, 
+  registrarObraObligatoriaBD, 
+  cambiarEstadoObraBD, 
+  segundosAMmSs 
+} from './services/obraService.js';
 import { supabase } from '../config/supabase.js';
 
 let adminSesion = null;
@@ -23,29 +27,43 @@ function notificar(mensaje, tipo = 'ok') {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// 🔒 BLINDAJE DE SEGURIDAD POR ROL AL CARGAR LA VISTA
+document.addEventListener('DOMContentLoaded', async () => {
   try {
+    // Valida estrictamente que la sesión pertenezca al rol 'administrador'
     adminSesion = requireRol('administrador');
   } catch (e) {
-    console.warn('Error al verificar sesión:', e);
+    console.warn('⚠️ Intento de acceso no autorizado detectado:', e);
+    window.location.replace('login.html');
+    return;
   }
 
-  if (!adminSesion) return;
+  if (!adminSesion || adminSesion.rol !== 'administrador') {
+    window.location.replace('login.html');
+    return;
+  }
 
   const elCred = document.getElementById('adminCredencial');
   if (elCred) elCred.textContent = `${adminSesion.nombre || adminSesion.nombres || 'Admin'} · ${(adminSesion.rol || 'administrador').toUpperCase()}`;
 
-  // Navegación por tabs (Se añadió 'leaderboard' a la UI si está mapeado)
+  // Navegación por tabs
   document.querySelectorAll('[data-admin-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       activeAdminTab = btn.dataset.adminTab;
+      
+      // Si hacen clic en S4, redirige inmediatamente a cronograma.html
+      if (activeAdminTab === 's4') {
+        window.location.href = 'cronograma.html';
+        return;
+      }
+
       document.querySelectorAll('[data-admin-tab]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       renderAdminTab();
     });
   });
 
-  renderAdminTab();
+  await renderAdminTab();
 });
 
 /* ---------- Render principal por tab ---------- */
@@ -55,10 +73,10 @@ async function renderAdminTab() {
 
   switch (activeAdminTab) {
     case 's1': cont.innerHTML = await renderS1(); bindS1(); break;
-    case 's4': cont.innerHTML = await renderS4(); bindS4(); break;  
+    case 's4': window.location.href = 'cronograma.html'; break;  
     case 's5': cont.innerHTML = await renderS5(); bindS5(); break;
     case 's6': cont.innerHTML = await renderS6(); bindS6(); break;
-    case 's7': cont.innerHTML = await renderS7(); bindS7(); bindS7(); break;
+    case 's7': cont.innerHTML = await renderS7(); bindS7(); break;
   }
 }
 
@@ -68,99 +86,136 @@ async function renderAdminTab() {
 async function obtenerEstadoConcursoBD() {
   try {
     const { data, error } = await supabase
-      .from('edicion_concurso')
+      .from('configuracion_concurso')
       .select('*')
-      .eq('id_edicion', 2026)
+      .eq('id', 1)
       .maybeSingle();
 
     if (error || !data) {
       return {
-        id_edicion: 2026,
         fase_eliminatoria_estado: 'En Curso',
-        fase_final_estado: 'En Curso',
-        cuadro_publicado: false,
         edicion_archivada: false,
-        fecha_archivado: null,
-        ganadores: null
+        portal_publicado: false
       };
     }
     return data;
   } catch (err) {
     return {
-      id_edicion: 2026,
       fase_eliminatoria_estado: 'En Curso',
-      fase_final_estado: 'En Curso',
-      cuadro_publicado: false,
       edicion_archivada: false,
-      fecha_archivado: null,
-      ganadores: null
+      portal_publicado: false
     };
   }
 }
 
 async function guardarEstadoConcursoBD(cambios) {
   const { error } = await supabase
-    .from('edicion_concurso')
-    .upsert([{ id_edicion: 2026, ...cambios }]);
+    .from('configuracion_concurso')
+    .update(cambios)
+    .eq('id', 1);
   if (error) console.error('Error al guardar estado de concurso en Supabase:', error.message);
 }
 
 /* ============================================================================
-   S1 · CATÁLOGO DE OBRAS (HU-01) - SUPABASE
+   S1 · CATÁLOGO DE OBRAS (HU-01) - SUPABASE (Con Edición y Activación/Desactivación)
    ============================================================================ */
 async function renderS1() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada;
-  const obras = await obtenerObrasObligatoriasBD();
+
+  const obras = await obtenerTodasLasObrasObligatoriasBD();
+  const obrasActivasCount = obras.filter(o => o.estado === true).length;
 
   return `
     <div class="card">
       <div class="ficha-header">
         <div>
           <h2>🎼 Subsistema 1 · Catálogo de Obras Obligatorias</h2>
-          <p class="subtitle">HU-01 · HU-02 · RF-01 a RF-04 · RNF-01 (orden alfabético)</p>
+          <p class="subtitle">HU-01 · HU-02 · Gestión, Edición y Activación de Obras</p>
         </div>
-        <span class="badge badge-ok">${obras.length} obras activas</span>
+        <span class="badge badge-ok">${obrasActivasCount} activas / ${obras.length} totales</span>
       </div>
 
       <div class="grid-2" style="margin-top:16px; align-items:start;">
         <div class="integrante-card" style="background:#fff;">
-          <h4>➕ Registrar Obra Obligatoria</h4>
+          <h4 id="s1FormTitulo">➕ Registrar Obra Obligatoria</h4>
           <form id="formS1Obra">
+            <input type="hidden" id="s1ObraId" value="">
+            
             <div class="form-row">
               <label>Título de la Obra <span class="req">*</span></label>
-              <input type="text" id="s1Titulo" placeholder="Ej: Cuarteto en Fa Mayor" ${bloqueado ? 'disabled' : ''}>
+              <input type="text" id="s1Titulo" placeholder="Ej: Cuarteto en Fa Mayor" ${bloqueado ? 'disabled' : ''} required>
             </div>
+            
             <div class="form-row">
               <label>Compositor <span class="req">*</span> (CA3)</label>
-              <input type="text" id="s1Compositor" placeholder="Ej: Maurice Ravel" ${bloqueado ? 'disabled' : ''}>
+              <input type="text" id="s1Compositor" placeholder="Ej: Maurice Ravel" ${bloqueado ? 'disabled' : ''} required>
             </div>
+            
             <div class="form-row">
               <label>Duración Estimada (mm:ss)</label>
               <input type="text" id="s1Duracion" placeholder="Ej: 5:15" value="5:15" ${bloqueado ? 'disabled' : ''}>
             </div>
+            
             <div id="s1Feedback" style="margin-bottom:12px;"></div>
-            <button type="submit" class="btn btn-primary" ${bloqueado ? 'disabled' : ''}>
-              💾 Guardar en Catálogo
-            </button>
+            
+            <div style="display:flex; gap:8px;">
+              <button type="submit" class="btn btn-primary" style="flex:1;" ${bloqueado ? 'disabled' : ''}>
+                💾 Guardar en Catálogo
+              </button>
+              <button type="button" class="btn btn-secondary" id="s1BtnCancelar" style="display:none;">
+                Cancelar Edición
+              </button>
+            </div>
           </form>
         </div>
 
         <div>
           <h4 style="font-size:15px; margin-bottom:10px;">📚 Catálogo Institucional (A–Z)</h4>
           <div class="table-container">
-            <table class="table">
-              <thead><tr><th>Título</th><th>Compositor</th><th>Duración</th><th>Estado</th></tr></thead>
+            <table class="table" style="font-size:13px;">
+              <thead>
+                <tr>
+                  <th>Título / Compositor</th>
+                  <th>Duración</th>
+                  <th>Estado</th>
+                  <th style="text-align:center;">Acciones</th>
+                </tr>
+              </thead>
               <tbody>
                 ${obras.length === 0 ? '<tr><td colspan="4" style="text-align:center;">No hay obras obligatorias registradas.</td></tr>' : 
                   obras.map(o => {
-                    const durSegundos = o.duracion ?? o.duracion_estimada ?? o.duracion_estimada_segundos ?? 0;
+                    const durSegundos = o.duracion_estimada || o.duracion || 0;
+                    const esActiva = o.estado === true;
+                    
                     return `
-                      <tr>
-                        <td><strong>${o.titulo}</strong></td>
-                        <td>${o.compositor || '—'}</td>
+                      <tr style="background: ${esActiva ? '#fff' : '#f8fafc'}; opacity: ${esActiva ? '1' : '0.6'};">
+                        <td>
+                          <strong>${o.titulo}</strong><br>
+                          <small style="color:var(--muted);">${o.compositor || '—'}</small>
+                        </td>
                         <td><span class="badge badge-code">${segundosAMmSs(durSegundos)} min</span></td>
-                        <td><span class="badge badge-ok">Activa</span></td>
+                        <td>
+                          <span class="badge ${esActiva ? 'badge-ok' : 'badge-rej'}">
+                            ${esActiva ? 'ACTIVA' : 'INACTIVA'}
+                          </span>
+                        </td>
+                        <td style="text-align:center; white-space:nowrap;">
+                          <button type="button" class="btn btn-secondary btn-editar-obra" 
+                            data-id="${o.id_obra || o.id}" 
+                            data-titulo="${o.titulo}" 
+                            data-compositor="${o.compositor || ''}" 
+                            data-duracion="${segundosAMmSs(durSegundos)}" 
+                            style="padding:3px 8px; font-size:11px;" ${bloqueado ? 'disabled' : ''}>
+                            ✏️ Editar
+                          </button>
+                          <button type="button" class="btn ${esActiva ? 'btn-danger' : 'btn-success'} btn-toggle-estado" 
+                            data-id="${o.id_obra || o.id}" 
+                            data-nuevo-estado="${!esActiva}" 
+                            style="padding:3px 8px; font-size:11px;" ${bloqueado ? 'disabled' : ''}>
+                            ${esActiva ? '🔴 Desactivar' : '🟢 Activar'}
+                          </button>
+                        </td>
                       </tr>
                     `;
                   }).join('')}
@@ -179,153 +234,81 @@ function bindS1() {
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    const titulo = document.getElementById('s1Titulo').value;
-    const compositor = document.getElementById('s1Compositor').value;
-    const duracion = document.getElementById('s1Duracion').value;
+    const idObra = document.getElementById('s1ObraId').value;
+    const titulo = document.getElementById('s1Titulo').value.trim();
+    const compositor = document.getElementById('s1Compositor').value.trim();
+    const duracionStr = document.getElementById('s1Duracion').value.trim();
     const fb = document.getElementById('s1Feedback');
 
     try {
-      await registrarObraObligatoriaBD(titulo, compositor, duracion);
-      notificar(`✅ Obra "${titulo}" agregada al catálogo.`, 'ok');
+      if (idObra) {
+        let segundos = 315;
+        if (duracionStr.includes(':')) {
+          const partes = duracionStr.split(':');
+          segundos = (parseInt(partes[0]) || 0) * 60 + (parseInt(partes[1]) || 0);
+        } else {
+          segundos = parseInt(duracionStr) || 315;
+        }
+
+        const { error } = await supabase
+          .from('obra')
+          .update({
+            titulo: titulo,
+            compositor: compositor,
+            duracion_estimada: segundos
+          })
+          .eq('id_obra', idObra);
+
+        if (error) throw error;
+        notificar(`✅ Obra "${titulo}" actualizada correctamente.`, 'ok');
+      } else {
+        await registrarObraObligatoriaBD(titulo, compositor, duracionStr);
+        notificar(`✅ Obra "${titulo}" agregada al catálogo.`, 'ok');
+      }
+
+      form.reset();
+      document.getElementById('s1ObraId').value = '';
+      document.getElementById('s1FormTitulo').textContent = '➕ Registrar Obra Obligatoria';
+      document.getElementById('s1BtnCancelar').style.display = 'none';
       await renderAdminTab();
     } catch (err) {
       fb.innerHTML = `<div class="alert alert-danger"><div>⚠️ ${err.message}</div></div>`;
     }
   });
-}
 
-/* ============================================================================
-   S4 · PROGRAMACIÓN Y REPROGRAMACIÓN DE AUDITORIOS (HU-11, HU-13) - SUPABASE
-   ============================================================================ */
-async function renderS4() {
-  const estadoConcurso = await obtenerEstadoConcursoBD();
-  const bloqueado = estadoConcurso.edicion_archivada;
+  document.querySelectorAll('.btn-editar-obra').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('s1ObraId').value = btn.dataset.id;
+      document.getElementById('s1Titulo').value = btn.dataset.titulo;
+      document.getElementById('s1Compositor').value = btn.dataset.compositor;
+      document.getElementById('s1Duracion').value = btn.dataset.duracion;
+      document.getElementById('s1FormTitulo').textContent = '✏️ Editar Obra Obligatoria';
+      document.getElementById('s1BtnCancelar').style.display = 'inline-block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
 
-  const { data: cuartetosInscritos } = await supabase
-    .from('cuarteto')
-    .select('*')
-    .eq('estado_inscripcion', 'Inscrito');
+  const btnCancelar = document.getElementById('s1BtnCancelar');
+  if (btnCancelar) {
+    btnCancelar.addEventListener('click', () => {
+      form.reset();
+      document.getElementById('s1ObraId').value = '';
+      document.getElementById('s1FormTitulo').textContent = '➕ Registrar Obra Obligatoria';
+      btnCancelar.style.display = 'none';
+    });
+  }
 
-  const lista = cuartetosInscritos || [];
+  document.querySelectorAll('.btn-toggle-estado').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idObra = btn.dataset.id;
+      const nuevoEstado = btn.dataset.nuevoEstado === 'true';
 
-  return `
-    <div class="card">
-      <div class="ficha-header">
-        <div>
-          <h2>📅 Subsistema 4 · Programación y Reprogramación de Turnos</h2>
-          <p class="subtitle">HU-11 · HU-13 · RF-29 a RF-34 · Asignación de Sede, Auditorio, Fecha y Hora sin cruces</p>
-        </div>
-        <span class="badge badge-ok">${lista.length} Cuartetos Aptos</span>
-      </div>
-
-      <div id="s4Feedback" style="margin-top:10px;"></div>
-
-      <div class="table-container" style="margin-top:16px;">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Cuarteto</th>
-              <th>Sede</th>
-              <th>Auditorio</th>
-              <th>Fecha</th>
-              <th>Hora Inicio</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${lista.length === 0 ? `
-              <tr><td colspan="6" style="text-align:center;">No hay cuartetos en estado 'Inscrito' listos para programar.</td></tr>
-            ` : lista.map(c => `
-              <tr>
-                <td><strong>${c.nombre_cuarteto}</strong><br><small>${c.codigo_cuarteto || ('#' + c.id_cuarteto)}</small></td>
-                <td>
-                  <input type="text" id="sede_${c.id_cuarteto}" value="${c.sede || 'Sede Central'}" style="width:110px; padding:4px;" ${bloqueado ? 'disabled' : ''}>
-                </td>
-                <td>
-                  <select id="auditorio_${c.id_cuarteto}" style="padding:4px;" ${bloqueado ? 'disabled' : ''}>
-                    <option value="Auditorio Principal" ${c.auditorio === 'Auditorio Principal' ? 'selected' : ''}>Auditorio Principal</option>
-                    <option value="Auditorio B — Sala Beethoven" ${c.auditorio === 'Auditorio B — Sala Beethoven' ? 'selected' : ''}>Auditorio B</option>
-                    <option value="Auditorio C — Sala Mozart" ${c.auditorio === 'Auditorio C — Sala Mozart' ? 'selected' : ''}>Auditorio C</option>
-                  </select>
-                </td>
-                <td>
-                  <input type="date" id="fecha_${c.id_cuarteto}" value="${c.fecha_presentacion || '2026-11-20'}" style="padding:4px;" ${bloqueado ? 'disabled' : ''}>
-                </td>
-                <td>
-                  <input type="time" id="hora_${c.id_cuarteto}" value="${c.hora_presentacion || '10:00'}" style="padding:4px;" ${bloqueado ? 'disabled' : ''}>
-                </td>
-                <td>
-                  <button type="button" class="btn btn-primary btn-guardar-turno" data-id="${c.id_cuarteto}" style="padding:4px 8px; font-size:12px;" ${bloqueado ? 'disabled' : ''}>
-                    💾 Programar Turno
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
-function bindS4() {
-  document.querySelectorAll('.btn-guardar-turno').forEach(btn => {
-    btn.addEventListener('click', async function () {
-      const idCuarteto = this.dataset.id;
-      const sede = document.getElementById(`sede_${idCuarteto}`).value;
-      const auditorio = document.getElementById(`auditorio_${idCuarteto}`).value;
-      const fecha = document.getElementById(`fecha_${idCuarteto}`).value;
-      const hora = document.getElementById(`hora_${idCuarteto}`).value;
-      const fb = document.getElementById('s4Feedback');
-
-      const { data: conflicto } = await supabase
-        .from('cuarteto')
-        .select('id_cuarteto, nombre_cuarteto')
-        .eq('auditorio', auditorio)
-        .eq('fecha_presentacion', fecha)
-        .eq('hora_presentacion', hora)
-        .neq('id_cuarteto', idCuarteto)
-        .maybeSingle();
-
-      if (conflicto) {
-        fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Conflicto de Horario (HU-11 / RF-30):</strong> El <b>${auditorio}</b> ya está ocupado el ${fecha} a las ${hora} por el cuarteto "${conflicto.nombre_cuarteto}".</div></div>`;
-        return;
-      }
-
-      const { error } = await supabase
-        .from('cuarteto')
-        .update({
-          sede: sede,
-          auditorio: auditorio,
-          fecha_presentacion: fecha,
-          hora_presentacion: hora,
-          estado_presentacion: 'Programado'
-        })
-        .eq('id_cuarteto', idCuarteto);
-
-      if (error) {
-        fb.innerHTML = `<div class="alert alert-danger"><div>Error al guardar turno en Supabase: ${error.message}</div></div>`;
-      } else {
-        const { data: datosCuarteto } = await supabase
-          .from('cuarteto')
-          .select('nombre_cuarteto, usuario!id_profesor_responsable(correo_institucional, nombres, apellidos)')
-          .eq('id_cuarteto', idCuarteto)
-          .single();
-
-        const correoDocente = datosCuarteto?.usuario?.correo_institucional || 'docente@conservatorio.edu.pe';
-
-        if (typeof registrarCorreoSimulado === 'function') {
-          registrarCorreoSimulado(
-            `${correoDocente}, representante@conservatorio.edu.pe`,
-            `Citación Oficial Concurso: ${datosCuarteto?.nombre_cuarteto || ('Cuarteto #' + idCuarteto)}`,
-            `Se ha programado/reprogramado su turno para el ${fecha} a las ${hora} hrs en el ${auditorio} (${sede}).`,
-            'RF-31 / RF-34'
-          );
-        }
-
-        fb.innerHTML = `<div class="alert alert-success"><div>✅ Turno guardado en Supabase y citación oficial emitida por correo al docente y representante (RF-31/34).</div></div>`;
-        notificar(`📅 Turno actualizado para el cuarteto #${idCuarteto}`, 'ok');
+      try {
+        await cambiarEstadoObraBD(idObra, nuevoEstado);
+        notificar(`✅ Obra marcada como ${nuevoEstado ? 'ACTIVA' : 'INACTIVA'}`, 'ok');
         await renderAdminTab();
+      } catch (err) {
+        notificar(`Error al cambiar estado: ${err.message}`, 'error');
       }
     });
   });
@@ -361,29 +344,33 @@ async function renderS5() {
 
       <div class="grid-2" style="margin-top:20px; align-items:start; gap:20px;">
         <div class="integrante-card" style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0;">
-          <h4>🔐 HU-14 · Crear Cuenta de Jurado</h4>
+          <h4>🔐 HU-14 · Crear Cuenta de Jurado con Contraseña</h4>
           <form id="formCrearJurado">
             <div class="form-row" style="margin-bottom:12px;">
               <label style="display:block; font-weight:600; margin-bottom:4px;">Nombre Completo <span class="req">*</span></label>
-              <input type="text" id="s5Nombre" placeholder="Ej: Dra. Beatriz Morales" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
+              <input type="text" id="s5Nombre" placeholder="Ej: Dra. Beatriz Morales" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''} required>
             </div>
             <div class="grid-2" style="gap:12px;">
               <div class="form-row" style="margin-bottom:12px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">DNI (8 dígitos) <span class="req">*</span></label>
-                <input type="text" id="s5Dni" maxlength="8" placeholder="Ej: 45678912" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
+                <input type="text" id="s5Dni" maxlength="8" placeholder="Ej: 45678912" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''} required>
               </div>
               <div class="form-row" style="margin-bottom:12px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">Especialidad Musical <span class="req">*</span></label>
-                <input type="text" id="s5Especialidad" placeholder="Ej: Violín y Música de Cámara" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
+                <input type="text" id="s5Especialidad" placeholder="Ej: Violín y Música de Cámara" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''} required>
               </div>
             </div>
-            <div class="form-row" style="margin-bottom:16px;">
+            <div class="form-row" style="margin-bottom:12px;">
               <label style="display:block; font-weight:600; margin-bottom:4px;">Correo Institucional <span class="req">*</span></label>
-              <input type="email" id="s5Correo" placeholder="Ej: bmorales@conservatorio.edu.pe" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
+              <input type="email" id="s5Correo" placeholder="Ej: bmorales@conservatorio.edu.pe" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''} required>
+            </div>
+            <div class="form-row" style="margin-bottom:16px;">
+              <label style="display:block; font-weight:600; margin-bottom:4px;">Contraseña Provisional <span class="req">*</span></label>
+              <input type="password" id="s5Password" placeholder="Mínimo 6 caracteres" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''} required minlength="6">
             </div>
             <div id="s5FeedbackJurado" style="margin-bottom:10px;"></div>
             <button type="submit" class="btn btn-primary" style="width:100%; padding:10px;" ${bloqueado ? 'disabled' : ''}>
-              ✉️ Crear Cuenta y Enviar Credenciales
+              ✉️ Crear Cuenta Auth y Enviar Credenciales
             </button>
           </form>
         </div>
@@ -496,52 +483,64 @@ function bindS5() {
       const dni = document.getElementById('s5Dni').value.trim();
       const esp = document.getElementById('s5Especialidad').value.trim();
       const correo = document.getElementById('s5Correo').value.trim();
+      const password = document.getElementById('s5Password').value;
       const fb = document.getElementById('s5FeedbackJurado');
 
-      if (!nombre || !dni || !esp || !correo) {
-        fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] RF-35:</strong> Complete todos los campos.</div></div>';
+      if (!nombre || !dni || !esp || !correo || !password) {
+        fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] RF-35:</strong> Complete todos los campos, incluyendo la contraseña.</div></div>';
         return;
       }
 
-      const { data: existeCorreo } = await supabase
-        .from('usuario')
-        .select('id_usuario')
-        .eq('correo_institucional', correo)
-        .maybeSingle();
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: correo.toLowerCase(),
+          password: password,
+          options: {
+            data: { nombres: nombre, rol: 'jurado' }
+          }
+        });
 
-      if (existeCorreo) {
-        fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] HU-14 Escenario 2:</strong> Correo ya registrado en Supabase.</div></div>';
-        return;
+        if (authError) {
+          throw new Error(`Error en Auth de Supabase: ${authError.message}`);
+        }
+
+        const authUserId = authData.user ? authData.user.id : null;
+        if (!authUserId) {
+          throw new Error('No se pudo obtener el ID del usuario autenticado.');
+        }
+
+        const { error: dbError } = await supabase
+          .from('usuario')
+          .insert([{
+            id_usuario: authUserId,
+            auth_user_id: authUserId,
+            nombres: nombre,
+            apellidos: '',
+            dni: dni,
+            especialidad: esp,
+            correo_institucional: correo.toLowerCase(),
+            id_rol: 7,
+            estado: true
+          }]);
+
+        if (dbError) {
+          throw new Error(`Error al registrar perfil en la tabla usuario: ${dbError.message}`);
+        }
+
+        if (typeof registrarCorreoSimulado === 'function') {
+          registrarCorreoSimulado(
+            correo,
+            'Bienvenido al Módulo de Evaluación - Credenciales Jurado',
+            `Usuario: ${correo} | Contraseña Provisional: ${password} | Acceso activado`,
+            'RF-36'
+          );
+        }
+
+        notificar(`✅ Cuenta de jurado creada exitosamente en Auth y BD para ${nombre}.`, 'ok');
+        await renderAdminTab();
+      } catch (err) {
+        fb.innerHTML = `<div class="alert alert-danger"><div>⚠️ ${err.message}</div></div>`;
       }
-
-      const { error } = await supabase
-        .from('usuario')
-        .insert([{
-          nombres: nombre,
-          apellidos: '',
-          dni: dni,
-          especialidad: esp,
-          correo_institucional: correo,
-          id_rol: 7,
-          estado: true
-        }]);
-
-      if (error) {
-        fb.innerHTML = `<div class="alert alert-danger"><div>Error al crear jurado en Supabase: ${error.message}</div></div>`;
-        return;
-      }
-
-      if (typeof registrarCorreoSimulado === 'function') {
-        registrarCorreoSimulado(
-          correo,
-          'Bienvenido al Módulo de Evaluación - Credenciales Jurado',
-          `Usuario: ${correo} | Acceso activado`,
-          'RF-36'
-        );
-      }
-
-      notificar(`✅ Cuenta de jurado (id_rol 7) guardada en Supabase para ${nombre}.`, 'ok');
-      await renderAdminTab();
     });
   }
 
@@ -598,7 +597,7 @@ function bindS5() {
 }
 
 /* ============================================================================
-   S6 · SUPERVISIÓN DE EVALUACIONES Y DESCALIFICACIÓN (HU-18) - 100% SUPABASE
+   S6 · SUPERVISIÓN DE SESIONES Y DESCALIFICACIÓN (HU-18) - 100% SUPABASE
    ============================================================================ */
 async function renderS6() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
@@ -653,6 +652,38 @@ async function renderS6() {
     };
   });
 
+  function convertirHoraAMinutos(horaStr) {
+    if (!horaStr || horaStr === '—') return 0;
+    const upper = horaStr.toString().toUpperCase().trim();
+    let horas = 0;
+    let minutos = 0;
+    
+    if (upper.includes('AM') || upper.includes('PM')) {
+      const isPM = upper.includes('PM');
+      const cleanTime = upper.replace('AM', '').replace('PM', '').trim();
+      const parts = cleanTime.split(':');
+      horas = parseInt(parts[0], 10) || 0;
+      minutos = parseInt(parts[1], 10) || 0;
+      if (isPM && horas < 12) horas += 12;
+      if (!isPM && horas === 12) horas = 0;
+    } else {
+      const parts = upper.split(':');
+      horas = parseInt(parts[0], 10) || 0;
+      minutos = parseInt(parts[1], 10) || 0;
+    }
+    return (horas * 60) + minutos;
+  }
+
+  evaluacionesMapeadas.sort((a, b) => {
+    const fA = a.fecha && a.fecha !== '—' ? a.fecha : '9999-12-31';
+    const fB = b.fecha && b.fecha !== '—' ? b.fecha : '9999-12-31';
+    if (fA !== fB) return fA.localeCompare(fB);
+    
+    const minA = convertirHoraAMinutos(a.hora);
+    const minB = convertirHoraAMinutos(b.hora);
+    return minA - minB;
+  });
+
   const listaFiltrada = filtroAuditorioAdminS6 === 'TODOS'
     ? evaluacionesMapeadas
     : evaluacionesMapeadas.filter(ev => ev.auditorio === filtroAuditorioAdminS6 || (filtroAuditorioAdminS6 === 'Auditorio B — Sala Beethoven' && ev.auditorio.includes('Auditorio B')));
@@ -662,11 +693,16 @@ async function renderS6() {
       <div class="ficha-header">
         <div>
           <h2>⚖️ Subsistema 6 · Supervisión de Sesiones y Descalificación</h2>
-          <p class="subtitle">HU-18 · RF-43 a RF-45 · Descalificación por inasistencia o incumplimiento</p>
+          <p class="subtitle">HU-18 · RF-43 a RF-45 · Control de actas y descalificaciones</p>
         </div>
-        <span class="badge ${bloqueado ? 'badge-rej' : 'badge-ok'}">
-          ${bloqueado ? '🔒 Acta Cerrada' : '🟢 Sesión Abierta'}
-        </span>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="badge ${bloqueado ? 'badge-rej' : 'badge-ok'}">
+            ${bloqueado ? '🔒 Acta Cerrada' : '🟢 Sesión Abierta'}
+          </span>
+          <button type="button" class="btn ${bloqueado ? 'btn-success' : 'btn-danger'}" id="btnToggleSesionS6" style="padding:6px 12px; font-size:12px;">
+            ${bloqueado ? '🟢 Abrir Sesión de Jurados' : '🔒 Cerrar Sesión de Jurados'}
+          </button>
+        </div>
       </div>
 
       <div style="background:#f8fafc; padding:14px 18px; border-radius:10px; border:1px solid var(--border); display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:18px;">
@@ -753,6 +789,30 @@ function bindS6() {
     selAud.addEventListener('change', function () {
       filtroAuditorioAdminS6 = this.value;
       renderAdminTab();
+    });
+  }
+
+  const btnToggleSesion = document.getElementById('btnToggleSesionS6');
+  if (btnToggleSesion) {
+    btnToggleSesion.addEventListener('click', async () => {
+      const esAbrir = btnToggleSesion.textContent.includes('Abrir');
+      const nuevoEstado = esAbrir ? 'En Curso' : 'Concluida';
+
+      if (!confirm(`¿Confirma ${esAbrir ? 'reabrir la sesión de evaluación' : 'cerrar las actas y bloquear la calificación de los jurados'}?`)) return;
+
+      const { error } = await supabase
+        .from('configuracion_concurso')
+        .update({ fase_eliminatoria_estado: nuevoEstado })
+        .eq('id', 1);
+
+      if (error) {
+        const fb = document.getElementById('s6FeedbackGlobal');
+        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al cambiar el estado de la sesión: ${error.message}</div>`;
+        return;
+      }
+
+      notificar(esAbrir ? '🟢 Sesión de evaluación reabierta con éxito.' : '🔒 Sesión cerrada y actas bloqueadas.', 'ok');
+      await renderAdminTab();
     });
   }
 
@@ -862,7 +922,6 @@ async function renderS7() {
     };
   });
 
-  // Leaderboard filtrado exclusivamente por los que tienen 3 notas completas y ordenados de mayor a menor promedio
   const leaderboardOficial = rankingProcesado
     .filter(q => !q.descalificado && q.tieneTresNotas)
     .sort((a, b) => b.promedio - a.promedio);
@@ -898,7 +957,6 @@ async function renderS7() {
 
       <div id="s7FeedbackGlobal" style="margin-bottom:14px;"></div>
 
-      <!-- SECCIÓN LEADERBOARD: 3 NOTAS Y ORDENADOS DE MAYOR A MENOR -->
       <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
           <div>
@@ -948,7 +1006,6 @@ async function renderS7() {
         </table>
       </div>
 
-      <!-- TABLA GENERAL DE MÉRITOS -->
       <h4 style="margin-bottom:10px; font-size:15px;">📊 Cuadro General de Méritos (RF-46)</h4>
       <div style="background:#fff; border-radius:10px; border:1px solid var(--border); overflow:hidden; margin-bottom:20px;">
         <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
@@ -1002,13 +1059,10 @@ async function renderS7() {
         </div>
       ` : ''}
 
-      <h4 style="margin-bottom:12px; font-size:15px;">⚙️ Acciones de Consolidación y Cierre (HU-20 a HU-22)</h4>
+      <h4 style="margin-bottom:12px; font-size:15px;">⚙️ Acciones de Cierre Global (HU-22)</h4>
       <div style="display:flex; gap:12px; flex-wrap:wrap;">
-        <button type="button" class="btn btn-secondary" id="btnConsolidarFase" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
-          1️⃣ Cerrar y Consolidar Fase (HU-20)
-        </button>
         <button type="button" class="btn btn-danger" id="btnArchivarEdicion" style="padding:10px 16px;" ${bloqueado ? 'disabled' : ''}>
-          3️⃣ Finalizar y Archivar Edición (HU-22)
+          🔒 Finalizar y Archivar Edición 2026 (HU-22)
         </button>
       </div>
     </div>
@@ -1018,7 +1072,6 @@ async function renderS7() {
 function bindS7() {
   const fb = document.getElementById('s7FeedbackGlobal');
 
-  // Toggle Publicación Leaderboard (HU-21)
   const btnTogglePub = document.getElementById('btnTogglePublicacion');
   if (btnTogglePub) {
     btnTogglePub.addEventListener('click', async () => {
@@ -1040,28 +1093,6 @@ function bindS7() {
     });
   }
 
-  // 1. Cerrar y Consolidar Fase (HU-20)
-  const btnConsolidar = document.getElementById('btnConsolidarFase');
-  if (btnConsolidar) {
-    btnConsolidar.addEventListener('click', async () => {
-      if (!confirm('¿Confirma cerrar y consolidar la fase eliminatoria? (HU-20)')) return;
-
-      const { error } = await supabase
-        .from('configuracion_concurso')
-        .update({ fase_eliminatoria_estado: 'Concluida' })
-        .eq('id', 1);
-
-      if (error) {
-        if (fb) fb.innerHTML = `<div class="alert alert-danger">Error al consolidar fase: ${error.message}</div>`;
-        return;
-      }
-
-      notificar('✅ Fase eliminatoria cerrada y consolidada con éxito (HU-20).', 'ok');
-      await renderAdminTab();
-    });
-  }
-
-  // 3. Finalizar y Archivar Edición (HU-22)
   const btnArchivar = document.getElementById('btnArchivarEdicion');
   if (btnArchivar) {
     btnArchivar.addEventListener('click', async () => {
