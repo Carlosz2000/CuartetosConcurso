@@ -1,6 +1,6 @@
 /* ============================================================
    ROL JURADO · Mi Sesión (HU-16) y Mi Calificación Inmutable (HU-17)
-   RF-39: Solo ve cuartetos de SU auditorio asignado
+   RF-39: Visualización de cuartetos por auditorio (con selector para los 3 auditorios)
    RF-41/42: Escala 0.0-10.0 y firma inmutable (Jurado A/B/C)
    ============================================================ */
 import { requireRol } from './core/session.js';
@@ -14,6 +14,7 @@ import { supabase } from '../config/supabase.js';
 
 let juradoSesion = null;
 let juradoCuenta = null;
+let filtroAuditorioJurado = null;
 
 // 🔒 BLINDAJE DE SEGURIDAD POR ROL AL CARGAR LA VISTA
 document.addEventListener('DOMContentLoaded', async () => {
@@ -34,6 +35,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Cargar datos de la cuenta del jurado autenticado desde Supabase
   juradoCuenta = await obtenerDatosJuradoBD(juradoSesion.email);
 
+  if (juradoCuenta && !filtroAuditorioJurado) {
+    filtroAuditorioJurado = juradoCuenta.auditorio || 'TODOS';
+  }
+
   const elCred = document.getElementById('juradoCredencial');
   if (elCred && juradoCuenta) {
     elCred.textContent = `${juradoCuenta.nombres} ${juradoCuenta.apellidos || ''} · ${juradoCuenta.auditorio || 'Sin Auditorio'}`;
@@ -43,16 +48,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B, C o null (si no fue seleccionado).
+ * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B o C para un auditorio específico.
  */
-async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
-  if (!cuentaJurado) return null;
+async function obtenerEtiquetaParaAuditorio(cuentaJurado, auditorio) {
+  if (!cuentaJurado || !auditorio || auditorio === 'TODOS') return null;
   
   const idJuradoLogueado = cuentaJurado.id_usuario || cuentaJurado.id;
-  const auditorioAsignado = cuentaJurado.auditorio || 'Auditorio Principal';
 
   try {
-    // Consultar las ternas desde la base de datos (Supabase)
     const { data: config } = await supabase
       .from('configuracion_concurso')
       .select('ternas_auditorios')
@@ -64,7 +67,7 @@ async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
         ? JSON.parse(config.ternas_auditorios)
         : config.ternas_auditorios;
 
-      const ternaAuditorio = ternas[auditorioAsignado];
+      const ternaAuditorio = ternas[auditorio];
       if (ternaAuditorio) {
         if (ternaAuditorio.a === idJuradoLogueado || ternaAuditorio[0] === idJuradoLogueado) return 'A';
         if (ternaAuditorio.b === idJuradoLogueado || ternaAuditorio[1] === idJuradoLogueado) return 'B';
@@ -75,10 +78,9 @@ async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
     console.warn('⚠️ Error al leer la terna desde Supabase:', e);
   }
 
-  // Fallback a localStorage por compatibilidad
   try {
     const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
-    const ternaLocal = ternasGuardadas[auditorioAsignado];
+    const ternaLocal = ternasGuardadas[auditorio];
     if (ternaLocal) {
       if (ternaLocal.a === idJuradoLogueado || ternaLocal[0] === idJuradoLogueado) return 'A';
       if (ternaLocal.b === idJuradoLogueado || ternaLocal[1] === idJuradoLogueado) return 'B';
@@ -86,7 +88,7 @@ async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
     }
   } catch (err) {}
 
-  return null; // Si no está en ninguna terna, retorna null para bloquear el acceso a calificar
+  return null; 
 }
 
 /* ---------- Render principal de la sesión del jurado ---------- */
@@ -104,28 +106,26 @@ async function renderSesionJurado() {
     return;
   }
 
-  // Validar si el jurado actual forma parte de la terna del auditorio
-  const miEtiqueta = await obtenerEtiquetaDinamicaJuradoBD(juradoCuenta);
-
-  if (!miEtiqueta) {
-    cont.innerHTML = `
-      <div class="card" style="text-align:center; padding:40px;">
-        <h3 style="color:var(--danger); margin-bottom:10px;">🔒 Acceso Restringido</h3>
-        <p style="color:var(--muted); font-size:14px;">
-          Usted no ha sido seleccionado en la terna oficial de jurados para el auditorio <b>${juradoCuenta.auditorio}</b>. 
-          Contacte con el administrador si considera que esto es un error.
-        </p>
-      </div>`;
-    return;
+  if (!filtroAuditorioJurado) {
+    filtroAuditorioJurado = juradoCuenta.auditorio || 'TODOS';
   }
 
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
 
-  // RF-39: Consultar únicamente los cuartetos asignados estrictamente a su auditorio
-  const misCuartetos = await obtenerCuartetosPorAuditorioBD(juradoCuenta.auditorio);
+  // Obtener cuartetos según el filtro seleccionado
+  let misCuartetos = [];
+  if (filtroAuditorioJurado === 'TODOS') {
+    const { data: cuartetosBD } = await supabase
+      .from('cuarteto')
+      .select('*, evaluacion(*)')
+      .eq('estado_inscripcion', 'Inscrito');
+    misCuartetos = cuartetosBD || [];
+  } else {
+    misCuartetos = await obtenerCuartetosPorAuditorioBD(filtroAuditorioJurado);
+  }
 
-  // Obtener nombres reales de la terna para mostrarlos en las tarjetas
+  // Cargar nombres de usuarios para las ternas
   let mapaNombresJurados = {};
   try {
     const { data: usuariosBD } = await supabase.from('usuario').select('id_usuario, nombres, apellidos');
@@ -136,41 +136,59 @@ async function renderSesionJurado() {
     }
   } catch (e) {}
 
-  const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
-  const ternaObj = ternasGuardadas[juradoCuenta.auditorio] || { a: '', b: '', c: '' };
-  
+  let ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
   try {
     const { data: config } = await supabase.from('configuracion_concurso').select('ternas_auditorios').eq('id', 1).maybeSingle();
     if (config && config.ternas_auditorios) {
       const t = typeof config.ternas_auditorios === 'string' ? JSON.parse(config.ternas_auditorios) : config.ternas_auditorios;
-      if (t[juradoCuenta.auditorio]) Object.assign(ternaObj, t[juradoCuenta.auditorio]);
+      Object.assign(ternasGuardadas, t);
     }
   } catch (err) {}
 
-  const nombresTernaArreglo = [
-    mapaNombresJurados[ternaObj.a || ternaObj[0]] || 'Jurado A',
-    mapaNombresJurados[ternaObj.b || ternaObj[1]] || 'Jurado B',
-    mapaNombresJurados[ternaObj.c || ternaObj[2]] || 'Jurado C'
-  ];
+  const nombreUsuarioLogueado = `${juradoCuenta.nombres || ''} ${juradoCuenta.apellidos || ''}`.trim() || 'Matias Jurado';
 
   cont.innerHTML = `
     <div class="card">
       <div class="ficha-header">
         <div>
-          <h2>⚖️ Mi Sesión de Evaluación · ${juradoCuenta.auditorio}</h2>
-          <p class="subtitle">HU-16 · RF-39/40 · Orden cronológico de presentación · Firma como <strong>Jurado ${miEtiqueta}</strong></p>
+          <h2>⚖️ Mi Sesión de Evaluación · ${filtroAuditorioJurado === 'TODOS' ? 'Todos los Auditorios' : filtroAuditorioJurado}</h2>
+          <p class="subtitle">HU-16 · RF-39/40 · Orden cronológico de presentación</p>
         </div>
         <span class="badge ${bloqueado ? 'badge-rej' : 'badge-ok'}">
           ${bloqueado ? '🔒 Acta Cerrada (RNF-24)' : '🟢 Sesión Abierta'}
         </span>
       </div>
+
+      <div style="background:#f8fafc; padding:14px 18px; border-radius:10px; border:1px solid var(--border); display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin:16px 0;">
+        <div>
+          <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">🏛️ Ver Auditorio:</label>
+          <select id="juradoFiltroAuditorio" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
+            <option value="TODOS" ${filtroAuditorioJurado === 'TODOS' ? 'selected' : ''}>Todos los Auditorios</option>
+            <option value="Auditorio Principal" ${filtroAuditorioJurado === 'Auditorio Principal' ? 'selected' : ''}>Auditorio Principal</option>
+            <option value="Auditorio B — Sala Beethoven" ${filtroAuditorioJurado === 'Auditorio B — Sala Beethoven' ? 'selected' : ''}>Auditorio B — Sala Beethoven</option>
+            <option value="Auditorio C — Sala Mozart" ${filtroAuditorioJurado === 'Auditorio C — Sala Mozart' ? 'selected' : ''}>Auditorio C — Sala Mozart</option>
+          </select>
+        </div>
+      </div>
+
       <div id="juradoFeedback" style="margin-top:10px;"></div>
 
       ${misCuartetos.length === 0 ? `
         <div class="alert alert-warn" style="margin-top:14px;">
-          <div>No tiene cuartetos programados en su auditorio (${juradoCuenta.auditorio}).</div>
+          <div>No hay cuartetos programados en este filtro (${filtroAuditorioJurado}).</div>
         </div>
-      ` : misCuartetos.map((c, index) => {
+      ` : ''}
+
+      ${(await Promise.all(misCuartetos.map(async (c, index) => {
+        const audCuarteto = c.auditorio || 'Auditorio Principal';
+        const miEtiqueta = await obtenerEtiquetaParaAuditorio(juradoCuenta, audCuarteto);
+        const ternaObj = ternasGuardadas[audCuarteto] || { a: '', b: '', c: '' };
+
+        const nombreA = miEtiqueta === 'A' ? nombreUsuarioLogueado : (mapaNombresJurados[ternaObj.a || ternaObj[0]] || 'Jurado A');
+        const nombreB = miEtiqueta === 'B' ? nombreUsuarioLogueado : (mapaNombresJurados[ternaObj.b || ternaObj[1]] || 'Jurado B');
+        const nombreC = miEtiqueta === 'C' ? nombreUsuarioLogueado : (mapaNombresJurados[ternaObj.c || ternaObj[2]] || 'Jurado C');
+        const nombresTernaArreglo = [nombreA, nombreB, nombreC];
+
         const evs = c.evaluacion || [];
         const descalificado = c.estado_presentacion === 'Descalificado';
 
@@ -187,7 +205,7 @@ async function renderSesionJurado() {
           C: getNota('C', 2)
         };
 
-        const miNotaObj = notasDict[miEtiqueta];
+        const miNotaObj = miEtiqueta ? notasDict[miEtiqueta] : { inmutable: false };
         const tituloObligatoria = c.obra_obligatoria || 'Sin asignar';
         const tituloLibre = c.obra_libre_titulo || 'Sin asignar';
 
@@ -197,11 +215,11 @@ async function renderSesionJurado() {
               <div>
                 <h4>#${index + 1}° · ${c.nombre_cuarteto} <span class="chip">${c.codigo_cuarteto || (`CRT-${c.id_cuarteto}`)}</span></h4>
                 <div style="font-size:13px; color:var(--muted);">
-                  📅 ${c.fecha_presentacion || '2026-11-20'} · ${c.hora_presentacion || '10:00'} · 🎼 ${tituloObligatoria} | ${tituloLibre}
+                  🏛️ <strong>${audCuarteto}</strong> · 📅 ${c.fecha_presentacion || '2026-11-20'} · ${c.hora_presentacion || '10:00'} · 🎼 ${tituloObligatoria} | ${tituloLibre}
                 </div>
               </div>
               <span class="badge ${descalificado ? 'badge-rej' : (miNotaObj.inmutable ? 'badge-ok' : 'badge-obs')}">
-                ${descalificado ? '🚫 Descalificado' : (miNotaObj.inmutable ? '🔒 Mi nota firmada' : '⏳ Pendiente de mi nota')}
+                ${descalificado ? '🚫 Descalificado' : (miNotaObj.inmutable ? '🔒 Mi nota firmada' : (miEtiqueta ? '⏳ Pendiente de mi nota' : '👀 Solo lectura (No en terna)'))}
               </span>
             </div>
 
@@ -225,7 +243,7 @@ async function renderSesionJurado() {
                         <div style="display:flex; gap:6px; margin-top:8px; align-items:center;">
                           <input type="number" step="0.1" min="0" max="10" id="notaJurado_${c.id_cuarteto}" placeholder="0.0 - 10.0"
                                  style="width:95px; padding:6px 8px; border:1.5px solid var(--primary); border-radius:6px; font-weight:700;" ${bloqueado ? 'disabled' : ''}>
-                          <button type="button" class="btn btn-primary btn-firmar-nota" data-id="${c.id_cuarteto}" data-nombre="${c.nombre_cuarteto}" style="padding:6px 10px; font-size:12px;" ${bloqueado ? 'disabled' : ''}>
+                          <button type="button" class="btn btn-primary btn-firmar-nota" data-id="${c.id_cuarteto}" data-letra="${miEtiqueta}" data-nombre="${c.nombre_cuarteto}" style="padding:6px 10px; font-size:12px;" ${bloqueado ? 'disabled' : ''}>
                             ✓ Firmar
                           </button>
                         </div>
@@ -239,31 +257,38 @@ async function renderSesionJurado() {
             `}
           </div>
         `;
-      }).join('')}
+      }))).join('')}
     </div>
   `;
 
-  bindEventsJurado(miEtiqueta);
+  bindEventsJurado();
 }
 
 /* ---------- Eventos: Firmar nota inmutable (HU-17) ---------- */
-function bindEventsJurado(letra) {
+function bindEventsJurado() {
+  const selAud = document.getElementById('juradoFiltroAuditorio');
+  if (selAud) {
+    selAud.addEventListener('change', function () {
+      filtroAuditorioJurado = this.value;
+      renderSesionJurado();
+    });
+  }
+
   document.querySelectorAll('.btn-firmar-nota').forEach(btn => {
     btn.addEventListener('click', async function () {
       const idCuarteto = this.dataset.id;
+      const letra = this.dataset.letra;
       const nombreCuarteto = this.dataset.nombre;
       const inp = document.getElementById(`notaJurado_${idCuarteto}`);
       const fb = document.getElementById('juradoFeedback');
       const raw = inp ? inp.value.trim() : '';
       const val = parseFloat(raw);
 
-      // RF-41: Validación estricta del rango 0.0 a 10.0
       if (raw === '' || isNaN(val) || val < 0 || val > 10) {
         fb.innerHTML = `<div class="alert alert-danger"><div><strong>[!] Puntaje fuera de escala (RF-41):</strong> El puntaje debe estar entre 0.0 y 10.0.</div></div>`;
         return;
       }
 
-      // RF-42: Confirmación de inmutabilidad
       if (!confirm(`¿Confirmar nota ${val.toFixed(2)} como Jurado ${letra} para "${nombreCuarteto}"? Esta acción es INMUTABLE (RF-42).`)) return;
 
       const notaFinal = Math.round(val * 100) / 100;

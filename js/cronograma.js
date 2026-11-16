@@ -41,10 +41,51 @@ let cuartetos = [];
 let horarioSeleccionadoActual = null;
 let turnoEnReprogramacionId = null;
 
+// Mapa global para nombres de jurados
+let mapaNombresJurados = {};
+
+async function cargarMapaNombresJurados() {
+  try {
+    const { data: usuariosBD } = await supabase.from('usuario').select('id_usuario, nombres, apellidos');
+    if (usuariosBD) {
+      usuariosBD.forEach(u => {
+        mapaNombresJurados[u.id_usuario] = `${u.nombres || ''} ${u.apellidos || ''}`.trim();
+      });
+    }
+  } catch (e) {
+    console.warn('No se pudo cargar el mapa de jurados:', e);
+  }
+}
+
+/* Helper universal para formatear terna de manera segura (evita error de .join) */
+function formatearTernaSegura(ternaRaw) {
+  if (!ternaRaw) return 'No asignada';
+  
+  let ternaObj = typeof ternaRaw === 'string' ? parseJSONSeguro(ternaRaw, ternaRaw) : ternaRaw;
+
+  if (Array.isArray(ternaObj)) {
+    return ternaObj.map(j => mapaNombresJurados[j] || j).join(' · ');
+  } else if (typeof ternaObj === 'object' && ternaObj !== null) {
+    const idA = ternaObj.a || ternaObj[0];
+    const idB = ternaObj.b || ternaObj[1];
+    const idC = ternaObj.c || ternaObj[2];
+    
+    const arr = [
+      mapaNombresJurados[idA] || idA || 'Jurado A',
+      mapaNombresJurados[idB] || idB || 'Jurado B',
+      mapaNombresJurados[idC] || idC || 'Jurado C'
+    ];
+    return arr.join(' · ');
+  }
+  return String(ternaRaw);
+}
+
 /* ============================================================
    CARGA DE PROGRAMACIONES Y TERNAS DESDE SUPABASE / S5
    ============================================================ */
 async function cargarDatosDinamicosBD() {
+  await cargarMapaNombresJurados();
+
   const ternasGuardadas = parseJSONSeguro(localStorage.getItem('concurso_ternas_auditorio'), null);
   if (ternasGuardadas) {
     auditorios.forEach(aud => {
@@ -53,6 +94,19 @@ async function cargarDatosDinamicosBD() {
       }
     });
   }
+
+  // Sincronizar ternas desde configuracion_concurso en Supabase si existen
+  try {
+    const { data: config } = await supabase.from('configuracion_concurso').select('ternas_auditorios').eq('id', 1).maybeSingle();
+    if (config && config.ternas_auditorios) {
+      const ternasSupabase = typeof config.ternas_auditorios === 'string' ? JSON.parse(config.ternas_auditorios) : config.ternas_auditorios;
+      auditorios.forEach(aud => {
+        if (ternasSupabase[aud.nombre]) {
+          aud.terna = ternasSupabase[aud.nombre];
+        }
+      });
+    }
+  } catch (e) {}
 
   try {
     // 1. Consultar únicamente programados que NO estén descalificados
@@ -270,7 +324,7 @@ function renderAuditoriosGrid() {
           `}
           <div class="terna-jurados">
             👨‍⚖️ <strong>Terna Oficial (RF-33):</strong><br>
-            ${aud.terna.join(' · ')}
+            ${formatearTernaSegura(aud.terna)}
           </div>
         </div>
       </div>
@@ -315,7 +369,7 @@ function actualizarInfoAuditorioSeleccionado() {
   if (aud) {
     infoEl.innerHTML = `
       <div style="font-size:13px; color:var(--ink); background:#f8fafc; padding:10px 14px; border-radius:8px; border:1px solid var(--border);">
-        🏛️ <strong>${aud.nombre}</strong> (${aud.sede} · Capacidad: ${aud.capacidad}) · 👨‍⚖️ <strong>Terna (RF-33):</strong> ${aud.terna.join(' · ')}
+        🏛️ <strong>${aud.nombre}</strong> (${aud.sede} · Capacidad: ${aud.capacidad}) · 👨‍⚖️ <strong>Terna (RF-33):</strong> ${formatearTernaSegura(aud.terna)}
       </div>
     `;
   }
@@ -448,7 +502,7 @@ function actualizarResumenTurno() {
       <div>
         🎯 <strong>Turno Preparado para Guardar:</strong><br>
         Auditorio: <strong>${aud.nombre}</strong> (${aud.sede}) · Fecha: <strong>${fecha}</strong> · Hora: <strong>${horarioSeleccionadoActual}</strong><br>
-        Cuarteto: <strong>${cuarteto.nombre}</strong> (${cuarteto.codigo}) · Terna: ${aud.terna.join(' · ')}
+        Cuarteto: <strong>${cuarteto.nombre}</strong> (${cuarteto.codigo}) · Terna: ${formatearTernaSegura(aud.terna)}
       </div>
     `;
     btnProgramar.disabled = false;
@@ -507,7 +561,7 @@ function renderTablaCronograma() {
         <span class="table-badge-auditorio">🏛️ ${prog.auditorioNombre}</span>
         <br><small style="color:var(--muted);">${prog.sede} · Turno #${prog.orden}</small>
       </td>
-      <td><small>${prog.terna.join(' · ')}</small></td>
+      <td><small>${formatearTernaSegura(prog.terna)}</small></td>
       <td><span class="badge badge-ok">${prog.estado}</span></td>
       <td>
         <div style="display:flex; gap:6px;">
@@ -698,7 +752,7 @@ function abrirModalCitacion(progId) {
   setT('citacionAuditorio', `${prog.auditorioNombre} (ÚNICO)`);
   setT('citacionOrden', `#${prog.orden}`);
   setT('citacionObras', prog.obras);
-  setT('citacionJurados', prog.terna.join(' · '));
+  setT('citacionJurados', formatearTernaSegura(prog.terna));
 
   modal.style.display = 'flex';
 }
@@ -859,7 +913,7 @@ function mostrarModalTurnoProgramado(turno) {
       <strong>Auditorio Asignado:</strong> <strong>${turno.auditorioNombre} (ÚNICO)</strong><br>
       <strong>Fecha y Hora:</strong> ${turno.fecha} · <strong>${turno.hora}</strong><br>
       <strong>Sede:</strong> ${turno.sede} · <strong>Turno:</strong> #${turno.orden}<br>
-      <strong>Terna de Jurados (RF-33):</strong> ${turno.terna.join(' · ')}
+      <strong>Terna de Jurados (RF-33):</strong> ${formatearTernaSegura(turno.terna)}
     </div>
   `;
   modal.style.display = 'flex';
@@ -944,7 +998,6 @@ async function renderTablaCatalogoJurados() {
   tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--muted);">Cargando jurados desde Supabase...</td></tr>`;
 
   try {
-    // Consulta los usuarios con rol de jurado (id_rol = 7) creados en el Subsistema 5
     const { data: juradosBD, error } = await supabase
       .from('usuario')
       .select('*')

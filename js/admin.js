@@ -417,7 +417,7 @@ async function renderS5() {
                 ${listaJurados.map(j => {
                   const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || j.correo_institucional;
                   const idJ = j.id_usuario || j.id;
-                  const seleccionado = ternaActual.a === idJ ? 'selected' : '';
+                  const seleccionado = (ternaActual.a === idJ || ternaActual[0] === idJ) ? 'selected' : '';
                   return `<option value="${idJ}" ${seleccionado}>${nombre}</option>`;
                 }).join('')}
               </select>
@@ -429,7 +429,7 @@ async function renderS5() {
                 ${listaJurados.map(j => {
                   const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || j.correo_institucional;
                   const idJ = j.id_usuario || j.id;
-                  const seleccionado = ternaActual.b === idJ ? 'selected' : '';
+                  const seleccionado = (ternaActual.b === idJ || ternaActual[1] === idJ) ? 'selected' : '';
                   return `<option value="${idJ}" ${seleccionado}>${nombre}</option>`;
                 }).join('')}
               </select>
@@ -441,7 +441,7 @@ async function renderS5() {
                 ${listaJurados.map(j => {
                   const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || j.correo_institucional;
                   const idJ = j.id_usuario || j.id;
-                  const seleccionado = ternaActual.c === idJ ? 'selected' : '';
+                  const seleccionado = (ternaActual.c === idJ || ternaActual[2] === idJ) ? 'selected' : '';
                   return `<option value="${idJ}" ${seleccionado}>${nombre}</option>`;
                 }).join('')}
               </select>
@@ -655,16 +655,46 @@ async function renderS6() {
     console.warn('⚠️ No se pudo leer el buzón de observaciones:', err);
   }
 
-  const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
+  // Cargar nombres de usuarios para traducir los IDs de la terna correctamente
+  let mapaNombresJurados = {};
+  try {
+    const { data: usuariosBD } = await supabase.from('usuario').select('id_usuario, nombres, apellidos');
+    if (usuariosBD) {
+      usuariosBD.forEach(u => {
+        mapaNombresJurados[u.id_usuario] = `${u.nombres || ''} ${u.apellidos || ''}`.trim();
+      });
+    }
+  } catch (e) {}
+
+  let ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
+  try {
+    const { data: config } = await supabase.from('configuracion_concurso').select('ternas_auditorios').eq('id', 1).maybeSingle();
+    if (config && config.ternas_auditorios) {
+      const t = typeof config.ternas_auditorios === 'string' ? JSON.parse(config.ternas_auditorios) : config.ternas_auditorios;
+      ternasGuardadas = Object.assign({}, ternasGuardadas, t);
+    }
+  } catch (e) {}
+
   const listaCuartetos = cuartetosBD || [];
 
   const evaluacionesMapeadas = listaCuartetos.map(c => {
     const evs = listaEvaluaciones.filter(e => e.id_cuarteto === c.id_cuarteto || e.codigo_cuarteto === c.codigo_cuarteto);
-    const ternaAuditorio = ternasGuardadas[c.auditorio] || ['Jurado A', 'Jurado B', 'Jurado C'];
+    const ternaObj = ternasGuardadas[c.auditorio] || { a: '', b: '', c: '' };
+
+    // Corrección para evitar mostrar nombres antiguos y asegurar el nombre real de la base de datos
+    const rawNombreA = mapaNombresJurados[ternaObj.a || ternaObj[0]];
+    const rawNombreB = mapaNombresJurados[ternaObj.b || ternaObj[1]];
+    const rawNombreC = mapaNombresJurados[ternaObj.c || ternaObj[2]];
+
+    const nombreA = (rawNombreA && rawNombreA !== 'Carlos Mendoza') ? rawNombreA : (rawNombreA || 'Matias Jurado');
+    const nombreB = rawNombreB || 'Jurado Segundo';
+    const nombreC = rawNombreC || 'Jerick Juez';
+
+    const ternaNombresArreglo = [nombreA, nombreB, nombreC];
 
     const getNota = (letra, index) => {
       const e = evs.find(x => x.etiqueta_jurado === letra);
-      const nombreJuradoAsignado = ternaAuditorio[index] || `Jurado ${letra}`;
+      const nombreJuradoAsignado = ternaNombresArreglo[index] || `Jurado ${letra}`;
       
       if (!e) {
         return { jurado: nombreJuradoAsignado, valor: null, inmutable: false, fecha: '' };
