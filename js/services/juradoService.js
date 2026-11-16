@@ -39,6 +39,7 @@ export async function obtenerEstadoConcursoBD() {
     edicion_archivada: false
   };
 }
+
 /**
  * Obtiene los cuartetos inscritos del auditorio asignado al jurado, 
  * incluyendo sus evaluaciones registradas en la tabla 'evaluacion'.
@@ -71,13 +72,48 @@ export async function obtenerCuartetosPorAuditorioBD(auditorioJurado) {
 }
 
 /**
- * Guarda o actualiza la nota inmutable del jurado en la tabla 'evaluacion'.
+ * Guarda o actualiza la nota inmutable del jurado en la tabla 'evaluacion' 
+ * verificando previamente la existencia del registro para evitar conflictos de índices en Supabase.
  */
 export async function guardarEvaluacionJuradoBD(evaluacionData) {
-  const { error } = await supabase
-    .from('evaluacion')
-    .upsert([evaluacionData], { onConflict: 'id_cuarteto,etiqueta_jurado' });
+  try {
+    // 1. Verificar si ya existe un registro previo para este cuarteto y etiqueta de jurado
+    const { data: existente, error: errSelect } = await supabase
+      .from('evaluacion')
+      .select('id_evaluacion')
+      .eq('id_cuarteto', evaluacionData.id_cuarteto)
+      .eq('etiqueta_jurado', evaluacionData.etiqueta_jurado)
+      .maybeSingle();
 
-  if (error) throw error;
-  return true;
+    if (errSelect) {
+      console.warn('Aviso al consultar evaluación previa:', errSelect.message);
+    }
+
+    let resultado;
+    if (existente && existente.id_evaluacion) {
+      // 2. Si ya existe, actualizamos
+      resultado = await supabase
+        .from('evaluacion')
+        .update({
+          nombre_jurado: evaluacionData.nombre_jurado,
+          nota: evaluacionData.nota,
+          inmutable: evaluacionData.inmutable,
+          fecha_evaluacion: evaluacionData.fecha_evaluacion
+        })
+        .eq('id_evaluacion', existente.id_evaluacion);
+    } else {
+      // 3. Si no existe, insertamos nuevo registro
+      resultado = await supabase
+        .from('evaluacion')
+        .insert([evaluacionData]);
+    }
+
+    if (resultado.error) {
+      throw resultado.error;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error al guardar evaluación en Supabase:', error.message);
+    throw error;
+  }
 }

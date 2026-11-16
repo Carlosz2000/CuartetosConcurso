@@ -1,6 +1,6 @@
 /* ============================================================
    ROL JURADO · Mi Sesión (HU-16) y Mi Calificación Inmutable (HU-17)
-   RF-39: Visualización de cuartetos por auditorio (con selector para los 3 auditorios)
+   RF-39: Visualización de cuartetos exclusivamente entre los 3 auditorios oficiales
    RF-41/42: Escala 0.0-10.0 y firma inmutable (Jurado A/B/C)
    ============================================================ */
 import { requireRol } from './core/session.js';
@@ -36,7 +36,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   juradoCuenta = await obtenerDatosJuradoBD(juradoSesion.email);
 
   if (juradoCuenta && !filtroAuditorioJurado) {
-    filtroAuditorioJurado = juradoCuenta.auditorio || 'TODOS';
+    filtroAuditorioJurado = juradoCuenta.auditorio || 'Auditorio Principal';
+  }
+
+  // Si el auditorio guardado era 'TODOS', por defecto lo ponemos en el Principal
+  if (!filtroAuditorioJurado || filtroAuditorioJurado === 'TODOS') {
+    filtroAuditorioJurado = 'Auditorio Principal';
   }
 
   const elCred = document.getElementById('juradoCredencial');
@@ -51,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B o C para un auditorio específico.
  */
 async function obtenerEtiquetaParaAuditorio(cuentaJurado, auditorio) {
-  if (!cuentaJurado || !auditorio || auditorio === 'TODOS') return null;
+  if (!cuentaJurado || !auditorio) return null;
   
   const idJuradoLogueado = cuentaJurado.id_usuario || cuentaJurado.id;
 
@@ -106,24 +111,15 @@ async function renderSesionJurado() {
     return;
   }
 
-  if (!filtroAuditorioJurado) {
-    filtroAuditorioJurado = juradoCuenta.auditorio || 'TODOS';
+  if (!filtroAuditorioJurado || filtroAuditorioJurado === 'TODOS') {
+    filtroAuditorioJurado = juradoCuenta.auditorio || 'Auditorio Principal';
   }
 
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
 
-  // Obtener cuartetos según el filtro seleccionado
-  let misCuartetos = [];
-  if (filtroAuditorioJurado === 'TODOS') {
-    const { data: cuartetosBD } = await supabase
-      .from('cuarteto')
-      .select('*, evaluacion(*)')
-      .eq('estado_inscripcion', 'Inscrito');
-    misCuartetos = cuartetosBD || [];
-  } else {
-    misCuartetos = await obtenerCuartetosPorAuditorioBD(filtroAuditorioJurado);
-  }
+  // Obtener cuartetos estrictamente del auditorio seleccionado
+  let misCuartetos = await obtenerCuartetosPorAuditorioBD(filtroAuditorioJurado);
 
   // Cargar nombres de usuarios para las ternas
   let mapaNombresJurados = {};
@@ -151,7 +147,7 @@ async function renderSesionJurado() {
     <div class="card">
       <div class="ficha-header">
         <div>
-          <h2>⚖️ Mi Sesión de Evaluación · ${filtroAuditorioJurado === 'TODOS' ? 'Todos los Auditorios' : filtroAuditorioJurado}</h2>
+          <h2>⚖️ Mi Sesión de Evaluación · ${filtroAuditorioJurado}</h2>
           <p class="subtitle">HU-16 · RF-39/40 · Orden cronológico de presentación</p>
         </div>
         <span class="badge ${bloqueado ? 'badge-rej' : 'badge-ok'}">
@@ -163,7 +159,6 @@ async function renderSesionJurado() {
         <div>
           <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">🏛️ Ver Auditorio:</label>
           <select id="juradoFiltroAuditorio" style="padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
-            <option value="TODOS" ${filtroAuditorioJurado === 'TODOS' ? 'selected' : ''}>Todos los Auditorios</option>
             <option value="Auditorio Principal" ${filtroAuditorioJurado === 'Auditorio Principal' ? 'selected' : ''}>Auditorio Principal</option>
             <option value="Auditorio B — Sala Beethoven" ${filtroAuditorioJurado === 'Auditorio B — Sala Beethoven' ? 'selected' : ''}>Auditorio B — Sala Beethoven</option>
             <option value="Auditorio C — Sala Mozart" ${filtroAuditorioJurado === 'Auditorio C — Sala Mozart' ? 'selected' : ''}>Auditorio C — Sala Mozart</option>
@@ -175,12 +170,12 @@ async function renderSesionJurado() {
 
       ${misCuartetos.length === 0 ? `
         <div class="alert alert-warn" style="margin-top:14px;">
-          <div>No hay cuartetos programados en este filtro (${filtroAuditorioJurado}).</div>
+          <div>No hay cuartetos programados en el <b>${filtroAuditorioJurado}</b>.</div>
         </div>
       ` : ''}
 
       ${(await Promise.all(misCuartetos.map(async (c, index) => {
-        const audCuarteto = c.auditorio || 'Auditorio Principal';
+        const audCuarteto = c.auditorio || filtroAuditorioJurado;
         const miEtiqueta = await obtenerEtiquetaParaAuditorio(juradoCuenta, audCuarteto);
         const ternaObj = ternasGuardadas[audCuarteto] || { a: '', b: '', c: '' };
 
