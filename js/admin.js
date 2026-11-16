@@ -597,7 +597,7 @@ function bindS5() {
 }
 
 /* ============================================================================
-   S6 · SUPERVISIÓN DE SESIONES Y DESCALIFICACIÓN (HU-18) - 100% SUPABASE
+   S6 · SUPERVISIÓN DE SESIONES, OBSERVACIONES Y DESCALIFICACIÓN (HU-18)
    ============================================================================ */
 async function renderS6() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
@@ -616,6 +616,20 @@ async function renderS6() {
     if (evaluacionesBD) listaEvaluaciones = evaluacionesBD;
   } catch (err) {
     console.warn('⚠️ No se pudo leer la tabla evaluacion:', err);
+  }
+
+  // Cargar observaciones desde la tabla en la nube buzon_observaciones
+  let listaBuzonGeneral = [];
+  try {
+    const { data: buzonBD } = await supabase
+      .from('buzon_observaciones')
+      .select('*')
+      .order('id', { ascending: false });
+    if (buzonBD) {
+      listaBuzonGeneral = buzonBD;
+    }
+  } catch (err) {
+    console.warn('⚠️ No se pudo leer el buzón de observaciones:', err);
   }
 
   const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
@@ -692,8 +706,8 @@ async function renderS6() {
     <div class="card">
       <div class="ficha-header">
         <div>
-          <h2>⚖️ Subsistema 6 · Supervisión de Sesiones y Descalificación</h2>
-          <p class="subtitle">HU-18 · RF-43 a RF-45 · Control de actas y descalificaciones</p>
+          <h2>⚖️ Subsistema 6 · Supervisión de Sesiones, Observaciones y Descalificación</h2>
+          <p class="subtitle">HU-18 · RF-43 a RF-45 · Control de actas y buzón de observaciones</p>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <span class="badge ${bloqueado ? 'badge-rej' : 'badge-ok'}">
@@ -779,6 +793,36 @@ async function renderS6() {
           </div>
         `;
       }).join('')}
+
+      <!-- SECCIÓN APARTE ABAJO: LISTA GENERAL DE OBSERVACIONES DEL BUZÓN -->
+      <div style="margin-top:32px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px;">
+        <h3 style="font-size:16px; color:var(--primary); margin-bottom:6px;">💬 Buzón de Observaciones y Dudas de Representantes</h3>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">Listado general de reportes e inquietudes enviadas por las agrupaciones.</p>
+
+        ${listaBuzonGeneral.length === 0 ? `
+          <div style="text-align:center; padding:24px; color:var(--muted); background:#f8fafc; border-radius:8px; font-size:13px;">
+            No hay observaciones registradas en el buzón.
+          </div>
+        ` : `
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            ${listaBuzonGeneral.map(obs => `
+              <div style="background:#fffbeb; border:1px solid #fef3c7; padding:14px; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+                  <span style="font-size:13px; font-weight:700; color:#b45309; background:#fde68a; padding:2px 8px; border-radius:4px;">
+                    Remitente / Cuarteto: ${obs.remitente || 'Desconocido'}
+                  </span>
+                  <span style="font-size:11px; color:#78350f;">
+                    📅 ${new Date(obs.fecha).toLocaleString('es-PE')}
+                  </span>
+                </div>
+                <div style="font-size:13px; color:#78350f; line-height:1.4;">
+                  "${obs.texto}"
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
     </div>
   `;
 }

@@ -11,6 +11,14 @@ const formRegister = document.getElementById('formRegister');
 const loginError = document.getElementById('loginError');
 const registerError = document.getElementById('registerError');
 
+// Mapa numérico de roles en Supabase (id_rol 1 = alumno / representante)
+const MAPA_ROLES = {
+    1: 'representante',
+    2: 'profesor',
+    4: 'administrador',
+    7: 'jurado'
+};
+
 // Mostrar errores
 function showError(element, message) {
     element.textContent = message;
@@ -55,14 +63,12 @@ document.querySelectorAll('.toggle-pass').forEach(btn => {
 
 // Destinos según el rol
 const destinos = {
-    alumno: 'index.html',
     representante: 'representante.html',
     profesor: 'profesor.html',
     administrador: 'admin.html',
     jurado: 'jurado.html'
 };
 
-// Obtener perfil y redireccionar con validación inteligente
 async function redirigirSegunRol(authUserId) {
     const perfil = await obtenerPerfilUsuario(authUserId);
 
@@ -70,47 +76,22 @@ async function redirigirSegunRol(authUserId) {
         throw new Error('No se pudo encontrar la información del perfil del usuario.');
     }
 
-    const rol = (perfil.rol || '').toLowerCase();
-    let destino = destinos[rol];
+    // Detección y normalización de rol (soporta tanto texto como ID numérico de Supabase)
+    let rolCrudo = perfil.rol !== undefined ? perfil.rol : perfil.id_rol;
+    let rol = '';
 
-    if (!destino) {
-        throw new Error(`No existe una página configurada para el rol '${perfil.rol}'.`);
-    }
-
-    // ⭐ VALIDACIÓN ESPECIAL PARA ALUMNO / REPRESENTANTE:
-    // Si el rol es alumno o representante, verificamos si ya tiene un cuarteto registrado en Supabase.
-    if (rol === 'alumno' || rol === 'representante') {
-        const userIdFinal = perfil.id_usuario || perfil.id || authUserId;
-        const userEmail = perfil.correo_institucional || perfil.email || '';
-
-        let cuartetos = null;
-        
-        // Buscar por id_representante
-        const resId = await supabase
-            .from('cuarteto')
-            .select('id_cuarteto')
-            .eq('id_representante', userIdFinal);
-        
-        cuartetos = resId.data;
-
-        // Si no se encontró por ID, buscar por correo de contacto
-        if ((!cuartetos || cuartetos.length === 0) && userEmail) {
-            const resEmail = await supabase
-                .from('cuarteto')
-                .select('id_cuarteto')
-                .eq('correo_contacto', userEmail);
-            cuartetos = resEmail.data;
-        }
-
-        // Si YA tiene un cuarteto registrado, redirigir directo a su portal, si no, a la inscripción
-        if (cuartetos && cuartetos.length > 0) {
-            destino = 'representante.html';
-        } else {
-            destino = 'index.html';
+    if (typeof rolCrudo === 'number' || !isNaN(rolCrudo)) {
+        rol = MAPA_ROLES[Number(rolCrudo)] || 'representante';
+    } else {
+        rol = String(rolCrudo).toLowerCase().trim();
+        if (rol === 'alumno') {
+            rol = 'representante'; // Equivalencia estricta solicitada
         }
     }
 
-    // Guardar en la sesión con las propiedades de ID esperadas
+    let destino = destinos[rol] || 'representante.html';
+
+    // Guardar en la sesión asegurando que el rol sea exactamente 'representante'
     sessionStorage.setItem('competia_session', JSON.stringify({
         id: perfil.id || authUserId,
         id_usuario: perfil.id_usuario || perfil.id || authUserId,

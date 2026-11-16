@@ -585,7 +585,100 @@ function asignarEventListenersDinamicos(tab) {
 
 function configurarBuzonObservaciones() {
   const modal = $('modalObservacionSistema');
-  $('btnAbrirModalFeedback')?.addEventListener('click', () => { if (modal) modal.style.display = 'flex'; });
+  
+  // Buscar específicamente el input del remitente de forma directa y habilitarlo por completo
+  const inputs = document.querySelectorAll('.modal-box input[type="text"], .modal-box input:not([type]), input');
+  let inputRemitente = null;
+  
+  inputs.forEach(inp => {
+    const parent = inp.closest('.form-row') || inp.parentElement;
+    if (parent && (parent.textContent.includes('Cuarteto') || parent.textContent.includes('Remitente'))) {
+      inputRemitente = inp;
+    }
+  });
+
+  // Si no lo encuentra por texto, toma el primer input de texto del modal
+  if (!inputRemitente) {
+    inputRemitente = document.querySelector('.modal-box input');
+  }
+
+  if (inputRemitente) {
+    inputRemitente.removeAttribute('readonly');
+    inputRemitente.removeAttribute('disabled');
+    inputRemitente.style.backgroundColor = '#ffffff';
+    inputRemitente.style.cursor = 'text';
+    inputRemitente.style.pointerEvents = 'auto';
+    inputRemitente.placeholder = 'Ej: Cuarteto Fuga - Juan Pérez';
+  }
+
+  // Abrir modal con el botón de observaciones
+  document.querySelectorAll('[data-action="observaciones"], #btnAbrirModalFeedback').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (modal) {
+        modal.style.display = 'flex';
+        if (inputRemitente) {
+          inputRemitente.focus();
+        }
+      }
+    });
+  });
+
+  // Cerrar modal
   $('btnCerrarModalFeedback')?.addEventListener('click', () => { if (modal) modal.style.display = 'none'; });
   $('btnCancelarFeedback')?.addEventListener('click', () => { if (modal) modal.style.display = 'none'; });
+
+  // Enviar observación guardando en la nube (buzon_observaciones)
+  const btnEnviar = document.querySelector('#btnEnviarFeedback, .btn-primary[type="submit"], .modal-box .btn-primary');
+  
+  if (btnEnviar) {
+    const nuevoBtn = btnEnviar.cloneNode(true);
+    btnEnviar.parentNode.replaceChild(nuevoBtn, btnEnviar);
+
+    nuevoBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+
+      const textareaDetalle = document.querySelector('textarea, #detalleObservacion, [name*="detalle"]');
+      const texto = textareaDetalle ? textareaDetalle.value.trim() : '';
+      const remitenteEscrito = inputRemitente ? inputRemitente.value.trim() : '';
+      const idCuarteto = StoreRepresentante.ficha.id;
+
+      if (!remitenteEscrito) {
+        alert('Por favor, escribe el nombre del cuarteto o remitente.');
+        if (inputRemitente) inputRemitente.focus();
+        return;
+      }
+
+      if (!texto) {
+        alert('Por favor, escribe el detalle de la observación antes de enviar.');
+        if (textareaDetalle) textareaDetalle.focus();
+        return;
+      }
+
+      if (!idCuarteto) {
+        alert('No se encontró un cuarteto asociado a esta sesión.');
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('buzon_observaciones')
+          .insert([{
+            id_cuarteto: idCuarteto,
+            remitente: remitenteEscrito,
+            texto: texto
+          }]);
+
+        if (error) throw error;
+
+        alert('✅ ¡Observación enviada con éxito a la nube! La administración la revisará desde el panel S6.');
+        if (textareaDetalle) textareaDetalle.value = '';
+        if (inputRemitente) inputRemitente.value = '';
+        if (modal) modal.style.display = 'none';
+        
+      } catch (err) {
+        console.error('Error al enviar observación:', err);
+        alert('Hubo un error al enviar la observación: ' + err.message);
+      }
+    });
+  }
 }
