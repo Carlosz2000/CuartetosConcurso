@@ -43,11 +43,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B o C
- * consultando la terna guardada en Supabase y comparando los IDs de usuario.
+ * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B, C o null (si no fue seleccionado).
  */
 async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
-  if (!cuentaJurado) return 'C';
+  if (!cuentaJurado) return null;
   
   const idJuradoLogueado = cuentaJurado.id_usuario || cuentaJurado.id;
   const auditorioAsignado = cuentaJurado.auditorio || 'Auditorio Principal';
@@ -87,7 +86,7 @@ async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
     }
   } catch (err) {}
 
-  return cuentaJurado.etiqueta || 'C';
+  return null; // Si no está en ninguna terna, retorna null para bloquear el acceso a calificar
 }
 
 /* ---------- Render principal de la sesión del jurado ---------- */
@@ -105,14 +104,54 @@ async function renderSesionJurado() {
     return;
   }
 
+  // Validar si el jurado actual forma parte de la terna del auditorio
+  const miEtiqueta = await obtenerEtiquetaDinamicaJuradoBD(juradoCuenta);
+
+  if (!miEtiqueta) {
+    cont.innerHTML = `
+      <div class="card" style="text-align:center; padding:40px;">
+        <h3 style="color:var(--danger); margin-bottom:10px;">🔒 Acceso Restringido</h3>
+        <p style="color:var(--muted); font-size:14px;">
+          Usted no ha sido seleccionado en la terna oficial de jurados para el auditorio <b>${juradoCuenta.auditorio}</b>. 
+          Contacte con el administrador si considera que esto es un error.
+        </p>
+      </div>`;
+    return;
+  }
+
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
-  
-  // Asignación dinámica correcta de la etiqueta (A, B o C) consultando Supabase
-  const miEtiqueta = await obtenerEtiquetaDinamicaJuradoBD(juradoCuenta);
 
   // RF-39: Consultar únicamente los cuartetos asignados estrictamente a su auditorio
   const misCuartetos = await obtenerCuartetosPorAuditorioBD(juradoCuenta.auditorio);
+
+  // Obtener nombres reales de la terna para mostrarlos en las tarjetas
+  let mapaNombresJurados = {};
+  try {
+    const { data: usuariosBD } = await supabase.from('usuario').select('id_usuario, nombres, apellidos');
+    if (usuariosBD) {
+      usuariosBD.forEach(u => {
+        mapaNombresJurados[u.id_usuario] = `${u.nombres || ''} ${u.apellidos || ''}`.trim();
+      });
+    }
+  } catch (e) {}
+
+  const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
+  const ternaObj = ternasGuardadas[juradoCuenta.auditorio] || { a: '', b: '', c: '' };
+  
+  try {
+    const { data: config } = await supabase.from('configuracion_concurso').select('ternas_auditorios').eq('id', 1).maybeSingle();
+    if (config && config.ternas_auditorios) {
+      const t = typeof config.ternas_auditorios === 'string' ? JSON.parse(config.ternas_auditorios) : config.ternas_auditorios;
+      if (t[juradoCuenta.auditorio]) Object.assign(ternaObj, t[juradoCuenta.auditorio]);
+    }
+  } catch (err) {}
+
+  const nombresTernaArreglo = [
+    mapaNombresJurados[ternaObj.a || ternaObj[0]] || 'Jurado A',
+    mapaNombresJurados[ternaObj.b || ternaObj[1]] || 'Jurado B',
+    mapaNombresJurados[ternaObj.c || ternaObj[2]] || 'Jurado C'
+  ];
 
   cont.innerHTML = `
     <div class="card">
@@ -135,17 +174,17 @@ async function renderSesionJurado() {
         const evs = c.evaluacion || [];
         const descalificado = c.estado_presentacion === 'Descalificado';
 
-        const getNota = (letra) => {
+        const getNota = (letra, idxTerna) => {
           const e = evs.find(x => x.etiqueta_jurado === letra);
-          if (!e) return { jurado: `Jurado ${letra}`, valor: null, inmutable: false };
-          const nom = e.nombre_jurado || `Jurado ${letra}`;
-          return { jurado: nom, valor: e.nota, inmutable: !!e.inmutable };
+          const nombreAsignado = nombresTernaArreglo[idxTerna] || `Jurado ${letra}`;
+          if (!e) return { jurado: nombreAsignado, valor: null, inmutable: false };
+          return { jurado: e.nombre_jurado || nombreAsignado, valor: e.nota, inmutable: !!e.inmutable };
         };
 
         const notasDict = {
-          A: getNota('A'),
-          B: getNota('B'),
-          C: getNota('C')
+          A: getNota('A', 0),
+          B: getNota('B', 1),
+          C: getNota('C', 2)
         };
 
         const miNotaObj = notasDict[miEtiqueta];
@@ -172,7 +211,7 @@ async function renderSesionJurado() {
               </div>
             ` : `
               <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-top:12px;">
-                ${['A', 'B', 'C'].map(l => {
+                ${['A', 'B', 'C'].map((l, idxTerna) => {
                   const n = notasDict[l];
                   const esMia = (l === miEtiqueta);
                   return `
