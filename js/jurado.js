@@ -10,6 +10,7 @@ import {
   obtenerCuartetosPorAuditorioBD, 
   guardarEvaluacionJuradoBD 
 } from './services/juradoService.js';
+import { supabase } from '../config/supabase.js';
 
 let juradoSesion = null;
 let juradoCuenta = null;
@@ -43,27 +44,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 /**
  * Función auxiliar para determinar dinámicamente si el jurado logueado es A, B o C
- * basándose en la terna configurada en el Subsistema 5 para su auditorio.
+ * consultando la terna guardada en Supabase y comparando los IDs de usuario.
  */
-function obtenerEtiquetaDinamicaJurado(cuentaJurado) {
+async function obtenerEtiquetaDinamicaJuradoBD(cuentaJurado) {
   if (!cuentaJurado) return 'C';
   
-  const nombreJuradoLogueado = `${cuentaJurado.nombres || ''} ${cuentaJurado.apellidos || ''}`.trim().toLowerCase();
+  const idJuradoLogueado = cuentaJurado.id_usuario || cuentaJurado.id;
   const auditorioAsignado = cuentaJurado.auditorio || 'Auditorio Principal';
 
-  // Leer las ternas configuradas en S5 (localStorage)
-  const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
-  const ternaAuditorio = ternasGuardadas[auditorioAsignado] || [];
+  try {
+    // Consultar las ternas desde la base de datos (Supabase)
+    const { data: config } = await supabase
+      .from('configuracion_concurso')
+      .select('ternas_auditorios')
+      .eq('id', 1)
+      .maybeSingle();
 
-  // Buscar el índice del jurado en la terna (0 = A, 1 = B, 2 = C)
-  for (let i = 0; i < ternaAuditorio.length; i++) {
-    const juradoTernaNorm = ternaAuditorio[i].trim().toLowerCase();
-    if (juradoTernaNorm === nombreJuradoLogueado || juradoTernaNorm.includes(nombreJuradoLogueado) || nombreJuradoLogueado.includes(juradoTernaNorm)) {
-      if (i === 0) return 'A';
-      if (i === 1) return 'B';
-      if (i === 2) return 'C';
+    if (config && config.ternas_auditorios) {
+      const ternas = typeof config.ternas_auditorios === 'string'
+        ? JSON.parse(config.ternas_auditorios)
+        : config.ternas_auditorios;
+
+      const ternaAuditorio = ternas[auditorioAsignado];
+      if (ternaAuditorio) {
+        if (ternaAuditorio.a === idJuradoLogueado || ternaAuditorio[0] === idJuradoLogueado) return 'A';
+        if (ternaAuditorio.b === idJuradoLogueado || ternaAuditorio[1] === idJuradoLogueado) return 'B';
+        if (ternaAuditorio.c === idJuradoLogueado || ternaAuditorio[2] === idJuradoLogueado) return 'C';
+      }
     }
+  } catch (e) {
+    console.warn('⚠️ Error al leer la terna desde Supabase:', e);
   }
+
+  // Fallback a localStorage por compatibilidad
+  try {
+    const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
+    const ternaLocal = ternasGuardadas[auditorioAsignado];
+    if (ternaLocal) {
+      if (ternaLocal.a === idJuradoLogueado || ternaLocal[0] === idJuradoLogueado) return 'A';
+      if (ternaLocal.b === idJuradoLogueado || ternaLocal[1] === idJuradoLogueado) return 'B';
+      if (ternaLocal.c === idJuradoLogueado || ternaLocal[2] === idJuradoLogueado) return 'C';
+    }
+  } catch (err) {}
 
   return cuentaJurado.etiqueta || 'C';
 }
@@ -86,8 +108,8 @@ async function renderSesionJurado() {
   const estadoConcurso = await obtenerEstadoConcursoBD();
   const bloqueado = estadoConcurso.edicion_archivada || estadoConcurso.fase_eliminatoria_estado === 'Concluida';
   
-  // Asignación dinámica correcta de la etiqueta (A, B o C)
-  const miEtiqueta = obtenerEtiquetaDinamicaJurado(juradoCuenta);
+  // Asignación dinámica correcta de la etiqueta (A, B o C) consultando Supabase
+  const miEtiqueta = await obtenerEtiquetaDinamicaJuradoBD(juradoCuenta);
 
   // RF-39: Consultar únicamente los cuartetos asignados estrictamente a su auditorio
   const misCuartetos = await obtenerCuartetosPorAuditorioBD(juradoCuenta.auditorio);

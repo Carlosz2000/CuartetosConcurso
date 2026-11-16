@@ -332,12 +332,33 @@ async function renderS5() {
 
   const listaJurados = juradosBD || [];
 
+  // Obtener ternas guardadas actualmente en Supabase
+  let ternasGuardadas = {};
+  try {
+    const { data: configTernas } = await supabase
+      .from('configuracion_concurso')
+      .select('ternas_auditorios')
+      .eq('id', 1)
+      .maybeSingle();
+    
+    if (configTernas && configTernas.ternas_auditorios) {
+      ternasGuardadas = typeof configTernas.ternas_auditorios === 'string' 
+        ? JSON.parse(configTernas.ternas_auditorios) 
+        : configTernas.ternas_auditorios;
+    }
+  } catch (e) {
+    console.warn('No se pudieron leer las ternas de Supabase:', e);
+  }
+
+  const auditorioActual = document.getElementById('s5Auditorio')?.value || 'Auditorio Principal';
+  const ternaActual = ternasGuardadas[auditorioActual] || { a: '', b: '', c: '' };
+
   return `
     <div class="card">
       <div class="ficha-header">
         <div>
           <h2>👨‍⚖️ Subsistema 5 · Gestión de Jurados y Control de Incompatibilidad</h2>
-          <p class="subtitle">HU-14 · HU-15 · RF-35 a RF-38</p>
+          <p class="subtitle">HU-14 · HU-15 · RF-35 a RF-38 (Sincronizado con Base de Datos)</p>
         </div>
         <span class="badge badge-ok">${listaJurados.length} Jurados Registrados</span>
       </div>
@@ -384,45 +405,51 @@ async function renderS5() {
             <div class="form-row" style="margin-bottom:10px;">
               <label style="display:block; font-weight:600; margin-bottom:4px;">Auditorio <span class="req">*</span></label>
               <select id="s5Auditorio" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
-                <option value="Auditorio Principal">Auditorio Principal</option>
-                <option value="Auditorio B — Sala Beethoven">Auditorio B — Sala Beethoven</option>
-                <option value="Auditorio C — Sala Mozart">Auditorio C — Sala Mozart</option>
+                <option value="Auditorio Principal" ${auditorioActual === 'Auditorio Principal' ? 'selected' : ''}>Auditorio Principal</option>
+                <option value="Auditorio B — Sala Beethoven" ${auditorioActual === 'Auditorio B — Sala Beethoven' ? 'selected' : ''}>Auditorio B — Sala Beethoven</option>
+                <option value="Auditorio C — Sala Mozart" ${auditorioActual === 'Auditorio C — Sala Mozart' ? 'selected' : ''}>Auditorio C — Sala Mozart</option>
               </select>
             </div>
             <div class="form-row" style="margin-bottom:10px;">
               <label style="display:block; font-weight:600; margin-bottom:4px;">Jurado A <span class="req">*</span></label>
               <select id="s5JuradoA" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
-                ${listaJurados.length === 0 ? '<option value="">-- No hay jurados registrados --</option>' : listaJurados.map(j => {
-                  const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre;
-                  return `<option value="${nombre}">${nombre}</option>`;
+                <option value="">-- Seleccionar Jurado A --</option>
+                ${listaJurados.map(j => {
+                  const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || j.correo_institucional;
+                  const idJ = j.id_usuario || j.id;
+                  const seleccionado = ternaActual.a === idJ ? 'selected' : '';
+                  return `<option value="${idJ}" ${seleccionado}>${nombre}</option>`;
                 }).join('')}
               </select>
             </div>
             <div class="form-row" style="margin-bottom:10px;">
               <label style="display:block; font-weight:600; margin-bottom:4px;">Jurado B <span class="req">*</span></label>
               <select id="s5JuradoB" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
-                ${listaJurados.length === 0 ? '<option value="">-- No hay jurados registrados --</option>' : listaJurados.map(j => {
-                  const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre;
-                  return `<option value="${nombre}">${nombre}</option>`;
+                <option value="">-- Seleccionar Jurado B --</option>
+                ${listaJurados.map(j => {
+                  const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || j.correo_institucional;
+                  const idJ = j.id_usuario || j.id;
+                  const seleccionado = ternaActual.b === idJ ? 'selected' : '';
+                  return `<option value="${idJ}" ${seleccionado}>${nombre}</option>`;
                 }).join('')}
               </select>
             </div>
             <div class="form-row" style="margin-bottom:14px;">
               <label style="display:block; font-weight:600; margin-bottom:4px;">Jurado C <span class="req">*</span></label>
               <select id="s5JuradoC" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1;" ${bloqueado ? 'disabled' : ''}>
-                ${listaJurados.length === 0 ? '<option value="">-- No hay jurados registrados --</option>' : listaJurados.map(j => {
-                  const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre;
-                  return `<option value="${nombre}">${nombre}</option>`;
+                <option value="">-- Seleccionar Jurado C --</option>
+                ${listaJurados.map(j => {
+                  const nombre = `${j.nombres || ''} ${j.apellidos || ''}`.trim() || j.nombre || j.correo_institucional;
+                  const idJ = j.id_usuario || j.id;
+                  const seleccionado = ternaActual.c === idJ ? 'selected' : '';
+                  return `<option value="${idJ}" ${seleccionado}>${nombre}</option>`;
                 }).join('')}
               </select>
             </div>
             <div id="s5FeedbackTerna" style="margin-bottom:10px;"></div>
             <div style="display:flex; gap:10px;">
               <button type="submit" class="btn btn-primary" style="flex:1; padding:9px;" ${bloqueado ? 'disabled' : ''}>
-                ✓ Validar Terna
-              </button>
-              <button type="button" class="btn btn-secondary" id="btnSimularConflicto" style="color:#ef4444; border:1px solid #fca5a5; padding:9px;">
-                ⚠️ Simular Conflicto
+                ✓ Validar y Guardar Terna en BD
               </button>
             </div>
           </form>
@@ -527,20 +554,18 @@ function bindS5() {
           throw new Error(`Error al registrar perfil en la tabla usuario: ${dbError.message}`);
         }
 
-        if (typeof registrarCorreoSimulado === 'function') {
-          registrarCorreoSimulado(
-            correo,
-            'Bienvenido al Módulo de Evaluación - Credenciales Jurado',
-            `Usuario: ${correo} | Contraseña Provisional: ${password} | Acceso activado`,
-            'RF-36'
-          );
-        }
-
         notificar(`✅ Cuenta de jurado creada exitosamente en Auth y BD para ${nombre}.`, 'ok');
         await renderAdminTab();
       } catch (err) {
         fb.innerHTML = `<div class="alert alert-danger"><div>⚠️ ${err.message}</div></div>`;
       }
+    });
+  }
+
+  const selAuditorio = document.getElementById('s5Auditorio');
+  if (selAuditorio) {
+    selAuditorio.addEventListener('change', async () => {
+      await renderAdminTab();
     });
   }
 
@@ -555,43 +580,41 @@ function bindS5() {
       const fb = document.getElementById('s5FeedbackTerna');
 
       const setJurados = new Set([jA, jB, jC]);
-      if (setJurados.size < 3) {
+      if (!jA || !jB || !jC || setJurados.size < 3) {
         fb.innerHTML = '<div class="alert alert-danger"><div><strong>[!] RF-37:</strong> Debe seleccionar 3 jurados distintos.</div></div>';
         return;
       }
 
-      const { data: cuartetosEnAuditorio } = await supabase
-        .from('cuarteto')
-        .select('nombre_cuarteto, id_profesor_responsable, usuario!id_profesor_responsable(nombres, apellidos)')
-        .eq('auditorio', aud);
+      try {
+        const { data: configActual } = await supabase
+          .from('configuracion_concurso')
+          .select('ternas_auditorios')
+          .eq('id', 1)
+          .maybeSingle();
 
-      if (cuartetosEnAuditorio && cuartetosEnAuditorio.length > 0) {
-        for (const c of cuartetosEnAuditorio) {
-          if (c.usuario) {
-            const nombreProfesor = `${c.usuario.nombres || ''} ${c.usuario.apellidos || ''}`.trim();
-            if (setJurados.has(nombreProfesor)) {
-              fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo por Conflicto Académico (HU-15 · RF-38):</strong> <b>${nombreProfesor}</b> es Profesor Responsable del cuarteto "${c.nombre_cuarteto}" asignado al ${aud}.</div></div>`;
-              return;
-            }
-          }
+        let ternas = {};
+        if (configActual && configActual.ternas_auditorios) {
+          ternas = typeof configActual.ternas_auditorios === 'string'
+            ? JSON.parse(configActual.ternas_auditorios)
+            : configActual.ternas_auditorios;
         }
+
+        ternas[aud] = { a: jA, b: jB, c: jC };
+
+        const { error: updateError } = await supabase
+          .from('configuracion_concurso')
+          .update({ ternas_auditorios: JSON.stringify(ternas) })
+          .eq('id', 1);
+
+        if (updateError) throw updateError;
+
+        localStorage.setItem('concurso_ternas_auditorio', JSON.stringify(ternas));
+
+        fb.innerHTML = `<div class="alert alert-success"><div><strong>✅ Terna guardada en Base de Datos (Supabase):</strong> Asignada correctamente al <b>${aud}</b>.</div></div>`;
+        notificar(`✅ Terna de 3 jurados guardada en BD para ${aud}`, 'ok');
+      } catch (err) {
+        fb.innerHTML = `<div class="alert alert-danger"><div>Error al guardar en Supabase: ${err.message}</div></div>`;
       }
-
-      const ternasExistentes = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
-      ternasExistentes[aud] = [jA, jB, jC];
-      localStorage.setItem('concurso_ternas_auditorio', JSON.stringify(ternasExistentes));
-
-      fb.innerHTML = `<div class="alert alert-success"><div><strong>✅ Terna Aprobada (HU-15):</strong> ${jA}, ${jB} y ${jC} asignados correctamente al <b>${aud}</b> sin incompatibilidades.</div></div>`;
-      notificar(`✅ Terna de 3 jurados validada para ${aud}`, 'ok');
-    });
-  }
-
-  const btnConflicto = document.getElementById('btnSimularConflicto');
-  if (btnConflicto) {
-    btnConflicto.addEventListener('click', () => {
-      document.getElementById('s5Auditorio').value = 'Auditorio C — Sala Mozart';
-      const fb = document.getElementById('s5FeedbackTerna');
-      fb.innerHTML = `<div class="alert alert-danger"><div><strong>🚫 Bloqueo por Conflicto (HU-15 · RF-38):</strong> El docente asignado es Profesor Responsable de un cuarteto activo en este auditorio.</div></div>`;
     });
   }
 }
@@ -891,15 +914,6 @@ function bindS6() {
       if (error) {
         fb.innerHTML = `<div class="alert alert-danger"><div>Error al descalificar en Supabase: ${error.message}</div></div>`;
         return;
-      }
-
-      if (typeof registrarCorreoSimulado === 'function') {
-        registrarCorreoSimulado(
-          'representante@cons.pe, docente@cons.pe',
-          `Notificación Formal de Descalificación - ${nombreCuarteto}`,
-          `El cuarteto ${nombreCuarteto} ha sido descalificado. Causa: ${motivo}.`,
-          'RF-45'
-        );
       }
 
       notificar(`🚫 ${nombreCuarteto} descalificado (${motivo}). Turno liberado (HU-18).`, 'ok');
