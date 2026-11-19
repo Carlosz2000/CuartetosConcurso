@@ -324,9 +324,6 @@ function renderCitacion() {
   const estaProgramado = f.auditorio && f.fechaPresentacion && f.horaPresentacion;
   const esDescalificado = f.estadoPresentacion === 'Descalificado';
 
-  const ternasGuardadas = JSON.parse(localStorage.getItem('concurso_ternas_auditorio') || '{}');
-  const ternaOficial = ternasGuardadas[f.auditorio] || ['Jurado A', 'Jurado B', 'Jurado C'];
-
   return `
     <div class="card" style="border-left:5px solid ${esDescalificado ? 'var(--danger)' : (estaProgramado ? 'var(--success)' : 'var(--warn)')};">
       <div class="ficha-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
@@ -357,13 +354,6 @@ function renderCitacion() {
           <div>
             <span style="font-size:12px; color:var(--muted); display:block; font-weight:700;">⏰ HORA EXACTA DEL TURNO:</span>
             <strong style="font-size:16px; color:#15803d; background:#dcfce7; padding:2px 8px; border-radius:6px; display:inline-block;">${f.horaPresentacion} hrs</strong>
-          </div>
-        </div>
-
-        <div style="margin-top:16px; background:#fff; padding:14px; border:1px solid var(--border); border-radius:8px;">
-          <h4 style="font-size:14px; margin-bottom:6px;">👨‍⚖️ Terna Oficial de Jurados Evaluadores (RF-33):</h4>
-          <div style="font-size:13px; color:var(--ink);">
-            ${ternaOficial.map((j, i) => `• <strong>Jurado ${['A','B','C'][i]}:</strong> ${j}`).join('<br>')}
           </div>
         </div>
 
@@ -586,7 +576,6 @@ function asignarEventListenersDinamicos(tab) {
 function configurarBuzonObservaciones() {
   const modal = $('modalObservacionSistema');
   
-  // Buscar específicamente el input del remitente de forma directa y habilitarlo por completo
   const inputs = document.querySelectorAll('.modal-box input[type="text"], .modal-box input:not([type]), input');
   let inputRemitente = null;
   
@@ -597,7 +586,6 @@ function configurarBuzonObservaciones() {
     }
   });
 
-  // Si no lo encuentra por texto, toma el primer input de texto del modal
   if (!inputRemitente) {
     inputRemitente = document.querySelector('.modal-box input');
   }
@@ -611,7 +599,6 @@ function configurarBuzonObservaciones() {
     inputRemitente.placeholder = 'Ej: Cuarteto Fuga - Juan Pérez';
   }
 
-  // Abrir modal con el botón de observaciones
   document.querySelectorAll('[data-action="observaciones"], #btnAbrirModalFeedback').forEach(btn => {
     btn.addEventListener('click', () => {
       if (modal) {
@@ -623,11 +610,9 @@ function configurarBuzonObservaciones() {
     });
   });
 
-  // Cerrar modal
   $('btnCerrarModalFeedback')?.addEventListener('click', () => { if (modal) modal.style.display = 'none'; });
   $('btnCancelarFeedback')?.addEventListener('click', () => { if (modal) modal.style.display = 'none'; });
 
-  // Enviar observación guardando en la nube (buzon_observaciones)
   const btnEnviar = document.querySelector('#btnEnviarFeedback, .btn-primary[type="submit"], .modal-box .btn-primary');
   
   if (btnEnviar) {
